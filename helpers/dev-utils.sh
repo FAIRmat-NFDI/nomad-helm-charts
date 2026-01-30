@@ -1,18 +1,18 @@
 #!/bin/bash
-# ops/kubernetes/scripts/dev-utils.sh
-# Source this file to add helper aliases to your shell: source ops/kubernetes/scripts/dev-utils.sh
+# helpers/dev-utils.sh
+# Source this file to add helper aliases to your shell: source helpers/dev-utils.sh
 
 NAMESPACE="${NAMESPACE:-nomad-oasis}"
 
 # Deployment Management
-alias deploy-oasis='cd $(git rev-parse --show-toplevel)/ops/kubernetes && helm upgrade nomad-oasis ./nomad -f ./nomad/examples/oasis-minikube-values.yaml -n nomad-oasis'
-alias install-oasis='cd $(git rev-parse --show-toplevel)/ops/kubernetes && helm install nomad-oasis ./nomad -f ./nomad/examples/oasis-minikube-values.yaml -n nomad-oasis --create-namespace'
+alias deploy-oasis='cd $(git rev-parse --show-toplevel) && helm upgrade nomad-oasis ./charts/nomad-default -f ./examples/oasis-minikube-values.yaml -n nomad-oasis'
+alias install-oasis='cd $(git rev-parse --show-toplevel) && helm install nomad-oasis ./charts/nomad-default -f ./examples/oasis-minikube-values.yaml -n nomad-oasis --create-namespace'
 alias restart-app='kubectl rollout restart deployment nomad-oasis-app nomad-oasis-worker -n nomad-oasis'
 alias restart-hub='kubectl rollout restart deployment nomad-oasis-jupyterhub-hub -n nomad-oasis'
 alias nuke-oasis='helm uninstall nomad-oasis -n nomad-oasis && kubectl delete pvc --all -n nomad-oasis'
 
 # Diagnostics & Logs
-alias check-status='$(git rev-parse --show-toplevel)/ops/kubernetes/scripts/check-status.sh'
+alias check-status='$(git rev-parse --show-toplevel)/helpers/check-status.sh'
 alias logs-app='kubectl logs -l app.kubernetes.io/component=app -n nomad-oasis --tail=100 -f'
 alias logs-worker='kubectl logs -l app.kubernetes.io/component=worker -n nomad-oasis --tail=100 -f'
 alias logs-proxy='kubectl logs -l app.kubernetes.io/component=proxy -n nomad-oasis --tail=100 -f'

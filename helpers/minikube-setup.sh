@@ -2,9 +2,9 @@
 # NOMAD Oasis - Reproducible Minikube Setup
 #
 # This script provides a clean, reproducible environment for testing the NOMAD Helm chart.
-# Run from the nomad-distro repository root.
+# Run from the repository root.
 #
-# Usage: ./ops/kubernetes/scripts/minikube-setup.sh
+# Usage: ./helpers/minikube-setup.sh
 
 set -euo pipefail
 
@@ -51,8 +51,8 @@ minikube ssh -- 'sudo mkdir -p /nomad && sudo chmod -R 777 /nomad'
 # Step 5: Update Helm dependencies
 echo ""
 echo "Step 5: Updating Helm dependencies..."
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR/../nomad"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT/charts/nomad-default"
 helm dependency update .
 
 # Step 6: Create namespace and secrets
@@ -67,7 +67,7 @@ kubectl create secret generic nomad-hub-service-api-token \
 echo ""
 echo "Step 7: Installing NOMAD Oasis chart..."
 helm install "$RELEASE_NAME" . \
-  -f examples/oasis-minikube-values.yaml \
+  -f "$REPO_ROOT/examples/oasis-minikube-values.yaml" \
   -n "$NAMESPACE" \
   --timeout 15m
 
@@ -101,7 +101,7 @@ echo "  3. Open in browser:"
 echo "     http://$HOSTNAME/nomad-oasis/gui/"
 echo ""
 echo "To check status:"
-echo "  ./ops/kubernetes/scripts/check-status.sh"
+echo "  ./helpers/check-status.sh"
 echo ""
 echo "To uninstall:"
 echo "  helm uninstall $RELEASE_NAME -n $NAMESPACE"

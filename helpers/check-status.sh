@@ -2,7 +2,7 @@
 # NOMAD Oasis - Diagnostic Script
 #
 # This script runs a series of checks to verify the health of a NOMAD Oasis deployment.
-# Usage: ./ops/kubernetes/scripts/check-status.sh
+# Usage: ./helpers/check-status.sh
 
 set -e
 

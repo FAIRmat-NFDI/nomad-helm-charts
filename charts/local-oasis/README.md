@@ -162,11 +162,11 @@ minikube ssh -- 'sudo mkdir -p /nomad && sudo chmod -R 777 /nomad'
 
 ```bash
 # Update dependencies
-helm dependency update ./ops/kubernetes/nomad
+helm dependency update ./charts/nomad-default
 
 # Install using minikube example values (auto-generates API secret)
-helm install nomad-oasis ./ops/kubernetes/nomad \
-  -f ./ops/kubernetes/nomad/examples/oasis-minikube-values.yaml \
+helm install nomad-oasis ./charts/nomad-default \
+  -f ./examples/oasis-minikube-values.yaml \
   --timeout 15m
 
 # Watch pods
@@ -212,7 +212,7 @@ helm uninstall nomad-oasis
 
 | File | Description |
 |------|-------------|
-| `examples/oasis-minikube-values.yaml` | Local development on Minikube with Temporal enabled |
+| [`examples/oasis-minikube-values.yaml`](../../examples/oasis-minikube-values.yaml) | Local development on Minikube with Temporal enabled |
 
 ## Temporal Workflow Engine
 
@@ -434,7 +434,7 @@ kubectl logs <pod-name>
 The schema job may fail if PostgreSQL isn't ready. Delete and let it retry:
 ```bash
 kubectl delete job --all
-helm upgrade nomad-oasis ./ops/kubernetes/nomad -f <values-file>
+helm upgrade nomad-oasis ./charts/nomad-default -f <values-file>
 ```
 
 ### Volume mount issues
