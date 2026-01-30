@@ -13,7 +13,6 @@ Helm charts for deploying [NOMAD](https://nomad-lab.eu/) on Kubernetes.
 - For cloud deployment, a Kubernetes cluster:
   - [GKE](https://cloud.google.com/kubernetes-engine) [under development]
   - [EKS](https://aws.amazon.com/eks/) [under development]
-  - [AKS](https://azure.microsoft.com/en-us/services/aks/) [under development]
 
 ## Repository Structure
 
