@@ -19,7 +19,7 @@ Helm charts for deploying [NOMAD](https://nomad-lab.eu/) on Kubernetes.
 
 ```
 charts/
-  local-oasis/     # Standard NOMAD Oasis deployment (self-hosted)
+  nomad-default/     # Standard NOMAD Oasis deployment (self-hosted)
   GCP-oasis/       # Standard NOMAD Oasis deployment (GCP) [under development]
 helpers/             # Utility scripts (minikube/kind setup, diagnostics)
 ```
@@ -41,16 +41,16 @@ helpers/             # Utility scripts (minikube/kind setup, diagnostics)
 ### Manual Install
 
 ```bash
-helm dependency update ./charts/local-oasis
+helm dependency update ./charts/nomad-default
 
 # Minikube
-helm install nomad-oasis ./charts/local-oasis \
-  -f ./charts/local-oasis/oasis-minikube-values.yaml \
+helm install nomad-oasis ./charts/nomad-default \
+  -f ./charts/nomad-default/oasis-minikube-values.yaml \
   --timeout 15m
 
 # Kind
-helm install nomad-oasis ./charts/local-oasis \
-  -f ./charts/local-oasis/oasis-kind-values.yaml \
+helm install nomad-oasis ./charts/nomad-default \
+  -f ./charts/nomad-default/oasis-kind-values.yaml \
   --timeout 15m
 
 # Watch k8s pods status
@@ -59,7 +59,7 @@ kubectl get pods -w
 
 ## Configuration
 
-All configuration lives under the `nomad` key in your values file. See [`charts/local-oasis/values.yaml`](charts/local-oasis/values.yaml) for all available options.
+All configuration lives under the `nomad` key in your values file. See [`charts/nomad-default/values.yaml`](charts/nomad-default/values.yaml) for all available options.
 
 | Key | Purpose |
 |-----|---------|
@@ -81,17 +81,17 @@ nomad:
       key: password
 ```
 
-See the [local-oasis chart README](charts/local-oasis/README.md) for all six supported secret management methods.
+See the [nomad-default chart README](charts/nomad-default/README.md) for all six supported secret management methods.
 
 ## Charts
 
 | Chart | Description |
 |-------|-------------|
-| [`local-oasis`](charts/local-oasis/) | Standard self-hosted NOMAD Oasis with Elasticsearch, MongoDB, Temporal, and optional JupyterHub (NORTH) |
+| [`nomad-default`](charts/nomad-default/) | Standard self-hosted NOMAD Oasis with Elasticsearch, MongoDB, Temporal, and optional JupyterHub (NORTH) |
 
 ## Bundled Dependencies
 
-The `local-oasis` chart includes these subcharts (all disabled by default, enable as needed):
+The `nomad-default` chart includes these subcharts (all disabled by default, enable as needed):
 
 - **Elasticsearch** 7.17.3 -- Search and indexing
 - **MongoDB** 14.0.4 -- Document database
@@ -110,4 +110,4 @@ The `local-oasis` chart includes these subcharts (all disabled by default, enabl
 
 ## Further Documentation
 
-See the [local-oasis chart README](charts/local-oasis/README.md) for detailed documentation on Temporal, Keycloak authentication, NORTH/JupyterHub, architecture, and troubleshooting.
+See the [nomad-default chart README](charts/nomad-default/README.md) for detailed documentation on Temporal, Keycloak authentication, NORTH/JupyterHub, architecture, and troubleshooting.

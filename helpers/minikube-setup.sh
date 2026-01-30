@@ -64,7 +64,7 @@ minikube ssh -- 'sudo mkdir -p /nomad && sudo chmod -R 777 /nomad'
 echo ""
 echo "Step 5: Updating Helm dependencies..."
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$REPO_ROOT/charts/local-oasis"
+cd "$REPO_ROOT/charts/nomad-default"
 helm dependency update .
 
 # Step 6: Create namespace and secrets
