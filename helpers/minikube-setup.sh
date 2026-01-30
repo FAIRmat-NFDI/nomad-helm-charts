@@ -8,6 +8,18 @@
 
 set -euo pipefail
 
+# Check prerequisites
+for cmd in docker minikube helm kubectl; do
+  if ! command -v "$cmd" &> /dev/null; then
+    echo "Error: '$cmd' is not installed. Please install it first."
+    echo "  docker:   https://docs.docker.com/get-docker/"
+    echo "  minikube: https://minikube.sigs.k8s.io/docs/start/"
+    echo "  helm:     https://helm.sh/docs/intro/install/"
+    echo "  kubectl:  https://kubernetes.io/docs/tasks/tools/"
+    exit 1
+  fi
+done
+
 # Configuration
 MINIKUBE_CPUS="${MINIKUBE_CPUS:-6}"
 MINIKUBE_MEMORY="${MINIKUBE_MEMORY:-12288}"
@@ -52,7 +64,7 @@ minikube ssh -- 'sudo mkdir -p /nomad && sudo chmod -R 777 /nomad'
 echo ""
 echo "Step 5: Updating Helm dependencies..."
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$REPO_ROOT/charts/nomad-default"
+cd "$REPO_ROOT/charts/local-oasis"
 helm dependency update .
 
 # Step 6: Create namespace and secrets
@@ -67,7 +79,7 @@ kubectl create secret generic nomad-hub-service-api-token \
 echo ""
 echo "Step 7: Installing NOMAD Oasis chart..."
 helm install "$RELEASE_NAME" . \
-  -f "$REPO_ROOT/examples/oasis-minikube-values.yaml" \
+  -f oasis-minikube-values.yaml \
   -n "$NAMESPACE" \
   --timeout 15m
 

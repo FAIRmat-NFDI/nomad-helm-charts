@@ -1,13 +1,19 @@
-# NOMAD Helm Chart
+# NOMAD Local Oasis Helm Chart
 
 A Helm chart for deploying NOMAD on Kubernetes, including all required services (Elasticsearch, MongoDB, Temporal).
 
+## Prerequisites
+
+- [Helm](https://helm.sh/docs/intro/install/) >= 3.x
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) configured for your cluster
+- A running Kubernetes cluster (see [Local Development](#local-development) for Minikube or Kind)
+
 ## Configuration Structure
 
-The chart uses a clean configuration separation approach where all settings are under the `nomad` key:
+All settings are under the `nomad` key:
 
 ### `nomad.config` (App Configuration)
-Application-level NOMAD configuration. These values are written to `/app/nomad.yaml` in the container and also used by Kubernetes templates for ingress, volumes, and probes.
+Application-level NOMAD configuration. These values are written to `/app/nomad.yaml` in the container and also used by Kubernetes templates for ingress, volumes, and probes. You can check [here](https://nomad-lab.eu/prod/v1/docs/reference/config.html) to see the complete list of all available features and settings.
 
 ```yaml
 nomad:
@@ -73,6 +79,62 @@ nomad:
       host: ""  # defaults to elasticsearch-master
 ```
 
+## Customizing Your Installation
+
+When deploying your own NOMAD Oasis, you should create a custom values file based on one of the provided examples. These are the key settings to review:
+
+### Instance Identity (`nomad.config.meta`)
+
+Defines how your NOMAD instance presents itself:
+
+```yaml
+nomad:
+  config:
+    meta:
+      service: my-lab-oasis               # Instance name
+      homepage: https://my-lab.org/nomad   # Public URL shown in the UI
+      maintainer_email: admin@my-lab.org   # Contact email shown in the UI
+```
+
+### Hostname and Base Path (`nomad.config.services`)
+
+Must match your actual hostname and ingress configuration:
+
+```yaml
+nomad:
+  config:
+    services:
+      api_host: my-lab.org            # Your domain or hostname
+      api_base_path: /nomad-oasis     # URL path prefix
+      https: true                     # Enable for production
+```
+
+### Admin User (`nomad.config.services`)
+
+Set an admin user ID to manage the instance:
+
+```yaml
+nomad:
+  config:
+    services:
+      admin_user_id: "your-keycloak-user-id"
+```
+
+### Container Image (`nomad.image`)
+
+Pin a specific version rather than using `latest`:
+
+```yaml
+nomad:
+  image:
+    repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
+    tag: "v1.2.2"
+```
+
+### Authentication (`nomad.config.keycloak`)
+
+By default, the chart uses the NOMAD central Keycloak. For a private instance, configure your own identity provider — see [Authentication](#authentication-keycloak) below.
+
 ## Secrets Management
 
 The chart supports multiple methods for managing secrets:
@@ -123,12 +185,12 @@ nomad:
 
 Install with both files:
 ```bash
-helm install nomad ./nomad -f values.yaml -f secrets.yaml
+helm install nomad ./charts/local-oasis -f values.yaml -f secrets.yaml
 ```
 
 ### Method 5: Environment Variables with --set
 ```bash
-helm install nomad ./nomad \
+helm install nomad ./charts/local-oasis \
   -f values.yaml \
   --set nomad.secrets.api.value="${NOMAD_API_SECRET}"
 ```
@@ -139,12 +201,27 @@ helm install nomad ./nomad \
 sops -e secrets.yaml > secrets.enc.yaml
 
 # Install with encrypted secrets
-helm secrets install nomad ./nomad -f values.yaml -f secrets://secrets.enc.yaml
+helm secrets install nomad ./charts/local-oasis -f values.yaml -f secrets://secrets.enc.yaml
 ```
 
-## Quick Start (Minikube)
+## Local Development
 
-### Prerequisites
+This chart includes values files for local Kubernetes environments. Both produce an equivalent deployment.
+
+### Option A: Minikube
+
+#### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/)
+- [Minikube](https://minikube.sigs.k8s.io/docs/start/)
+
+#### Automated Setup
+
+```bash
+./helpers/minikube-setup.sh
+```
+
+#### Manual Setup
 
 ```bash
 # Start minikube with adequate resources
@@ -156,37 +233,96 @@ minikube addons enable ingress
 # Create required directories
 minikube ssh -- 'sudo mkdir -p /data/nomad/{public,staging,tmp,north/users} && sudo chmod -R 777 /data/nomad'
 minikube ssh -- 'sudo mkdir -p /nomad && sudo chmod -R 777 /nomad'
-```
 
-### Install
-
-```bash
-# Update dependencies
-helm dependency update ./charts/nomad-default
-
-# Install using minikube example values (auto-generates API secret)
-helm install nomad-oasis ./charts/nomad-default \
-  -f ./examples/oasis-minikube-values.yaml \
+# Update dependencies and install
+helm dependency update ./charts/local-oasis
+helm install nomad-oasis ./charts/local-oasis \
+  -f ./charts/local-oasis/oasis-minikube-values.yaml \
   --timeout 15m
-
-# Watch pods
-kubectl get pods -w
 ```
 
-### Access NOMAD
+#### Access
 
 ```bash
-# Port forward to the proxy service
+# Via port-forward
 kubectl port-forward svc/nomad-oasis-proxy 8080:80
+# Open http://localhost:8080/nomad-oasis/gui/
 
-# Open in browser
-# http://localhost:8080/nomad-oasis/gui/
+# Via ingress (add to /etc/hosts)
+echo "$(minikube ip) nomad-oasis.local" | sudo tee -a /etc/hosts
+minikube tunnel
+# Open http://nomad-oasis.local/nomad-oasis/gui/
 ```
 
-Or via ingress (add to /etc/hosts):
+### Option B: Kind
+
+#### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/)
+- [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
+
+#### Automated Setup
+
 ```bash
-echo "$(minikube ip) localhost" | sudo tee -a /etc/hosts
-# Then access: http://localhost/nomad-oasis/gui/
+./helpers/kind-setup.sh
+```
+
+#### Manual Setup
+
+```bash
+# Create cluster with ingress port mappings
+cat <<EOF | kind create cluster --name nomad-oasis --config=-
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "ingress-ready=true"
+  extraPortMappings:
+  - containerPort: 80
+    hostPort: 80
+    protocol: TCP
+  - containerPort: 443
+    hostPort: 443
+    protocol: TCP
+  extraMounts:
+  - hostPath: /tmp/nomad-data
+    containerPath: /data/nomad
+  - hostPath: /tmp/nomad-app
+    containerPath: /nomad
+EOF
+
+# Create data directories
+mkdir -p /tmp/nomad-data/{public,staging,north/users,tmp}
+mkdir -p /tmp/nomad-app
+docker exec nomad-oasis-control-plane mkdir -p /data/nomad/{public,staging,north/users,tmp}
+docker exec nomad-oasis-control-plane chmod -R 777 /data/nomad
+docker exec nomad-oasis-control-plane mkdir -p /nomad
+docker exec nomad-oasis-control-plane chmod -R 777 /nomad
+
+# Install nginx ingress controller for Kind
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=120s
+
+# Update dependencies and install
+helm dependency update ./charts/local-oasis
+helm install nomad-oasis ./charts/local-oasis \
+  -f ./charts/local-oasis/oasis-kind-values.yaml \
+  --timeout 15m
+```
+
+#### Access
+
+```bash
+# Open directly (ports 80/443 are mapped to localhost)
+# http://localhost/nomad-oasis/gui/
 ```
 
 ### Test Endpoints
@@ -208,11 +344,13 @@ curl -I http://localhost:8080/nomad-oasis/gui/
 helm uninstall nomad-oasis
 ```
 
-## Example Values Files
+## Values Files
 
 | File | Description |
 |------|-------------|
-| [`examples/oasis-minikube-values.yaml`](../../examples/oasis-minikube-values.yaml) | Local development on Minikube with Temporal enabled |
+| `values.yaml` | Chart defaults (all subcharts disabled) |
+| `oasis-minikube-values.yaml` | Minikube development with all services enabled |
+| `oasis-kind-values.yaml` | Kind development with all services enabled |
 
 ## Temporal Workflow Engine
 
@@ -257,7 +395,7 @@ nomad:
   config:
     keycloak:
       server_url: https://nomad-lab.eu/fairdi/keycloak/auth/
-      realm_name: fairdi_nomad_test  # or fairdi_nomad_prod for production
+      realm_name: fairdi_nomad_prod  # or fairdi_nomad_test for development/testing
       client_id: nomad_public
 ```
 
@@ -371,7 +509,7 @@ jupyterhub:
     config:
       GenericOAuthenticator:
         client_id: nomad_public
-        oauth_callback_url: http://nomad-oasis.local/nomad-oasis/north/hub/oauth_callback
+        oauth_callback_url: http://your-host/nomad-oasis/north/hub/oauth_callback
         authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/auth
         token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/token
         userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/userinfo
@@ -421,6 +559,12 @@ For Minikube:
 minikube ssh -- 'sudo mkdir -p /data/nomad/north/users && sudo chmod -R 777 /data/nomad/north/users'
 ```
 
+For Kind:
+```bash
+docker exec nomad-oasis-control-plane mkdir -p /data/nomad/north/users
+docker exec nomad-oasis-control-plane chmod -R 777 /data/nomad/north/users
+```
+
 ## Troubleshooting
 
 ### Pods not starting
@@ -434,13 +578,17 @@ kubectl logs <pod-name>
 The schema job may fail if PostgreSQL isn't ready. Delete and let it retry:
 ```bash
 kubectl delete job --all
-helm upgrade nomad-oasis ./charts/nomad-default -f <values-file>
+helm upgrade nomad-oasis ./charts/local-oasis -f <values-file>
 ```
 
 ### Volume mount issues
 Ensure directories exist on the node:
 ```bash
+# Minikube
 minikube ssh -- 'ls -la /data/nomad/'
+
+# Kind
+docker exec nomad-oasis-control-plane ls -la /data/nomad/
 ```
 
 ### Configuration Validation Warnings
@@ -471,7 +619,7 @@ The chart will display warnings during installation if there are configuration i
                            │
          ┌─────────────────┼─────────────────┐
          │                 │                 │
-  ┌──────▼──────┐   ┌──────▼──────┐   ┌──────▼──────┐
-  │ Elasticsearch│   │   MongoDB   │   │  Temporal   │
-  └─────────────┘   └─────────────┘   └─────────────┘
+  ┌──────▼───────┐   ┌─────▼─────┐   ┌───────▼─────┐
+  │ Elasticsearch│   │   MongoDB │   │  Temporal   │
+  └──────────────┘   └───────────┘   └─────────────┘
 ```

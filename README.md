@@ -2,39 +2,64 @@
 
 Helm charts for deploying [NOMAD](https://nomad-lab.eu/) on Kubernetes.
 
+## Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/)
+- [Helm](https://helm.sh/docs/intro/install/) >= 3.x
+- [kubectl](https://kubernetes.io/docs/tasks/tools/)
+- For local production/development, a Kubernetes cluster:
+  - [Minikube](https://minikube.sigs.k8s.io/docs/start/)
+  - [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
+- For cloud deployment, a Kubernetes cluster:
+  - [GKE](https://cloud.google.com/kubernetes-engine) [under development]
+  - [EKS](https://aws.amazon.com/eks/) [under development]
+  - [AKS](https://azure.microsoft.com/en-us/services/aks/) [under development]
+
 ## Repository Structure
 
 ```
 charts/
-  nomad-default/     # Standard NOMAD Oasis deployment
-examples/            # Example values files
-helpers/             # Utility scripts (minikube setup, diagnostics)
+  local-oasis/     # Standard NOMAD Oasis deployment (self-hosted)
+  GCP-oasis/       # Standard NOMAD Oasis deployment (GCP) [under development]
+helpers/             # Utility scripts (minikube/kind setup, diagnostics)
 ```
 
 ## Quick Start
 
-```bash
-# Add dependencies
-helm dependency update ./charts/nomad-default
-
-# Install with the minikube example values
-helm install nomad-oasis ./charts/nomad-default \
-  -f ./examples/oasis-minikube-values.yaml \
-  --timeout 15m
-
-# Watch pods come up
-kubectl get pods -w
-```
-
-Or use the automated minikube setup script:
+### Using Minikube
 
 ```bash
 ./helpers/minikube-setup.sh
 ```
 
+### Using Kind
+
+```bash
+./helpers/kind-setup.sh
+```
+
+### Manual Install
+
+```bash
+helm dependency update ./charts/local-oasis
+
+# Minikube
+helm install nomad-oasis ./charts/local-oasis \
+  -f ./charts/local-oasis/oasis-minikube-values.yaml \
+  --timeout 15m
+
+# Kind
+helm install nomad-oasis ./charts/local-oasis \
+  -f ./charts/local-oasis/oasis-kind-values.yaml \
+  --timeout 15m
+
+# Watch k8s pods status
+kubectl get pods -w
+```
+
 ## Configuration
 
-All configuration lives under the `nomad` key in your values file. See [`charts/nomad-default/values.yaml`](charts/nomad-default/values.yaml) for all available options.
+All configuration lives under the `nomad` key in your values file. See [`charts/local-oasis/values.yaml`](charts/local-oasis/values.yaml) for all available options.
 
 | Key | Purpose |
 |-----|---------|
@@ -46,7 +71,7 @@ All configuration lives under the `nomad` key in your values file. See [`charts/
 
 ### Secrets
 
-The simplest approach for development is auto-generation (the default). For production, use pre-created Kubernetes secrets:
+The simplest approach for development is auto-generation (the default). For production, use pre-created Kubernetes secrets or use helm directly to apply secrets:
 
 ```yaml
 nomad:
@@ -56,18 +81,17 @@ nomad:
       key: password
 ```
 
-See the [chart README](charts/nomad-default/README.md) for all six supported secret management methods.
+See the [local-oasis chart README](charts/local-oasis/README.md) for all six supported secret management methods.
 
-## Example Values
+## Charts
 
-| File | Description |
-|------|-------------|
-| [`oasis-minikube-values.yaml`](examples/oasis-minikube-values.yaml) | Local development on Minikube with all services enabled |
-| [`example-values.yaml`](examples/example-values.yaml) | Minimal production example |
+| Chart | Description |
+|-------|-------------|
+| [`local-oasis`](charts/local-oasis/) | Standard self-hosted NOMAD Oasis with Elasticsearch, MongoDB, Temporal, and optional JupyterHub (NORTH) |
 
 ## Bundled Dependencies
 
-The `nomad-default` chart includes these subcharts (all disabled by default, enable as needed):
+The `local-oasis` chart includes these subcharts (all disabled by default, enable as needed):
 
 - **Elasticsearch** 7.17.3 -- Search and indexing
 - **MongoDB** 14.0.4 -- Document database
@@ -79,10 +103,11 @@ The `nomad-default` chart includes these subcharts (all disabled by default, ena
 
 | Script | Description |
 |--------|-------------|
-| [`minikube-setup.sh`](helpers/minikube-setup.sh) | Automated minikube environment setup and chart installation |
+| [`minikube-setup.sh`](helpers/minikube-setup.sh) | Automated Minikube environment setup and chart installation |
+| [`kind-setup.sh`](helpers/kind-setup.sh) | Automated Kind environment setup and chart installation |
 | [`check-status.sh`](helpers/check-status.sh) | Deployment health diagnostics |
 | [`dev-utils.sh`](helpers/dev-utils.sh) | Shell aliases for development (`source helpers/dev-utils.sh`) |
 
 ## Further Documentation
 
-See the [chart README](charts/nomad-default/README.md) for detailed documentation on Temporal, Keycloak authentication, NORTH/JupyterHub, architecture, and troubleshooting.
+See the [local-oasis chart README](charts/local-oasis/README.md) for detailed documentation on Temporal, Keycloak authentication, NORTH/JupyterHub, architecture, and troubleshooting.
