@@ -1,0 +1,8 @@
+# chart-releaser configuration
+# https://github.com/helm/chart-releaser#configuration
+
+# Generate release notes from chart's CHANGELOG.md if present
+generate-release-notes: true
+
+# Package charts with dependencies included
+package-path: .cr-release-packages

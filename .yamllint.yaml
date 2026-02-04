@@ -1,0 +1,21 @@
+---
+extends: default
+
+rules:
+  # Allow long lines (common in Helm values)
+  line-length: disable
+  # Allow duplicate keys (Helm values can have complex structures)
+  key-duplicates: disable
+  # Don't require document start markers
+  document-start: disable
+  # Allow trailing spaces (common in multiline strings)
+  trailing-spaces: disable
+  # Relaxed indentation
+  indentation:
+    spaces: 2
+    indent-sequences: whatever
+  # Disable comment spacing rules
+  comments: disable
+  # Truthy values
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
