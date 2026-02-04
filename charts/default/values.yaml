@@ -219,7 +219,12 @@ nomad:
       port: 80
     podSecurityContext: {}
     securityContext: {}
-    resources: {}
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
     volumes: []
     volumeMounts: []
     nodeSelector: {}
@@ -235,7 +240,12 @@ nomad:
       port: 8000
     podSecurityContext: {}
     securityContext: {}
-    resources: {}
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "250m"
+      limits:
+        memory: "2Gi"
     volumes: []
     volumeMounts: []
     nodeSelector: {}
@@ -272,7 +282,12 @@ nomad:
                 periodSeconds: 600
     podSecurityContext: {}
     securityContext: {}
-    resources: {}
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "4Gi"
     volumes: []
     volumeMounts: []
     nodeSelector: {}
@@ -384,6 +399,12 @@ jupyterhub:
         # It is important to disable nonPrivateIPs otherwise the networkPolicy's will be silently ignored
         nonPrivateIPs: false
   hub:
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
     extraEnv:
       NOMAD_NORTH_HUB_SERVICE_API_TOKEN:
         valueFrom:
@@ -511,9 +532,23 @@ jupyterhub:
 
 mongodb:
   enabled: true
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
 
 elasticsearch:
   enabled: true
+  # Elasticsearch is memory-bound. The JVM heap should be ~50% of container memory.
+  # These defaults are conservative for development; increase for production.
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"  # Hard limit prevents OOM; ES heap is set relative to this
 
 temporal:
   enabled: false

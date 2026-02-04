@@ -185,12 +185,12 @@ nomad:
 
 Install with both files:
 ```bash
-helm install nomad ./charts/nomad-default -f values.yaml -f secrets.yaml
+helm install nomad ./charts/default -f values.yaml -f secrets.yaml
 ```
 
 ### Method 5: Environment Variables with --set
 ```bash
-helm install nomad ./charts/nomad-default \
+helm install nomad ./charts/default \
   -f values.yaml \
   --set nomad.secrets.api.value="${NOMAD_API_SECRET}"
 ```
@@ -201,7 +201,7 @@ helm install nomad ./charts/nomad-default \
 sops -e secrets.yaml > secrets.enc.yaml
 
 # Install with encrypted secrets
-helm secrets install nomad ./charts/nomad-default -f values.yaml -f secrets://secrets.enc.yaml
+helm secrets install nomad ./charts/default -f values.yaml -f secrets://secrets.enc.yaml
 ```
 
 ## Local Development
@@ -235,9 +235,9 @@ minikube ssh -- 'sudo mkdir -p /data/nomad/{public,staging,tmp,north/users} && s
 minikube ssh -- 'sudo mkdir -p /nomad && sudo chmod -R 777 /nomad'
 
 # Update dependencies and install
-helm dependency update ./charts/nomad-default
-helm install nomad-oasis ./charts/nomad-default \
-  -f ./charts/nomad-default/oasis-minikube-values.yaml \
+helm dependency update ./charts/default
+helm install nomad-oasis ./charts/default \
+  -f ./charts/default/oasis-minikube-values.yaml \
   --timeout 15m
 ```
 
@@ -312,9 +312,9 @@ kubectl wait --namespace ingress-nginx \
   --timeout=120s
 
 # Update dependencies and install
-helm dependency update ./charts/nomad-default
-helm install nomad-oasis ./charts/nomad-default \
-  -f ./charts/nomad-default/oasis-kind-values.yaml \
+helm dependency update ./charts/default
+helm install nomad-oasis ./charts/default \
+  -f ./charts/default/oasis-kind-values.yaml \
   --timeout 15m
 ```
 
@@ -578,7 +578,7 @@ kubectl logs <pod-name>
 The schema job may fail if PostgreSQL isn't ready. Delete and let it retry:
 ```bash
 kubectl delete job --all
-helm upgrade nomad-oasis ./charts/nomad-default -f <values-file>
+helm upgrade nomad-oasis ./charts/default -f <values-file>
 ```
 
 ### Volume mount issues
