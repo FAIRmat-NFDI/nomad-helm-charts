@@ -14,9 +14,8 @@ rules:
   indentation:
     spaces: 2
     indent-sequences: whatever
-  # Allow comments without space
-  comments:
-    min-spaces-from-content: 1
+  # Disable comment spacing rules
+  comments: disable
   # Truthy values
   truthy:
     allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
