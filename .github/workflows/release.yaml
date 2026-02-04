@@ -37,7 +37,7 @@ jobs:
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo add elastic https://helm.elastic.co
           helm repo add temporal https://go.temporal.io/helm-charts
-          helm repo add jupyterhub https://hub.jupyter.io/helm-chart/
+          helm repo add jupyterhub https://jupyterhub.github.io/helm-chart/
           helm repo update
 
       - name: Update chart dependencies
