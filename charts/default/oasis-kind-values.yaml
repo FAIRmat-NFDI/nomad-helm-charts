@@ -3,7 +3,7 @@ mongodb:
   image:
     registry: docker.io
     repository: bitnami/mongodb
-    tag: "latest"
+    tag: "7.0.29"
   persistence:
     enabled: false
   resources:
@@ -131,7 +131,7 @@ nomad:
 
     keycloak:
       server_url: "https://nomad-lab.eu/fairdi/keycloak/auth/"
-      realm_name: "fairdi_nomad_test"
+      realm_name: "fairdi_nomad_prod" # or fairdi_nomad_test for development/testing
       username: admin
       client_id: "nomad_public"
 
@@ -297,9 +297,9 @@ jupyterhub:
       GenericOAuthenticator:
         client_id: nomad_public
         oauth_callback_url: http://localhost/nomad-oasis/north/hub/oauth_callback
-        authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/auth
-        token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/token
-        userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/userinfo
+        authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/auth
+        token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
+        userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
     extraEnv:
       NOMAD_OASIS_URL: "http://nomad-oasis-proxy/nomad-oasis"
     db:
