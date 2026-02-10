@@ -8,7 +8,7 @@ validate-maintainers: false
 check-version-increment: true
 
 # Use custom yamllint config
-lint-conf: .yamllint.yaml
+lint-conf: .github/yamllint.yaml
 
 # Helm lint settings
 helm-extra-args: --timeout 600s
