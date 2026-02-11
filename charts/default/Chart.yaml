@@ -28,10 +28,6 @@ dependencies:
     condition: elasticsearch.enabled
     version: 7.17.3
     repository: https://helm.elastic.co
-  - name: mongodb
-    condition: mongodb.enabled
-    version: 14.0.4
-    repository: oci://registry-1.docker.io/bitnamicharts
   - name: jupyterhub
     version: "3.2.1"
     repository: "https://jupyterhub.github.io/helm-chart/"

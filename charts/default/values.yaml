@@ -2,8 +2,8 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 roll: false
-nameOverride: ''
-fullnameOverride: ''
+nameOverride: ""
+fullnameOverride: ""
 
 serviceAccount:
   # Specifies whether a service account should be created
@@ -14,7 +14,7 @@ serviceAccount:
   annotations: {}
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
-  name: ''
+  name: ""
 
 nomad:
   enabled: true
@@ -259,7 +259,7 @@ nomad:
     terminationGracePeriodSeconds: 300
     processes: null
     maxTasksPerChild: 128
-    storage: null  # "memory" or "disk"
+    storage: null # "memory" or "disk"
     autoscaling:
       enabled: false
       minReplicas: 1
@@ -276,9 +276,9 @@ nomad:
             scaleDown:
               stabilizationWindowSeconds: 1800
               policies:
-              - type: Percent
-                value: 25
-                periodSeconds: 600
+                - type: Percent
+                  value: 25
+                  periodSeconds: 600
     podSecurityContext: {}
     securityContext: {}
     resources:
@@ -345,9 +345,9 @@ nomad:
     enabled: false
     limitConnections: 32
     limitConnectionsApi: 8
-    className: ''
+    className: ""
     annotations:
-      nginx.ingress.kubernetes.io/ssl-redirect: 'false'
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
       nginx.ingress.kubernetes.io/proxy-body-size: 32g
     tls: []
 
@@ -374,26 +374,26 @@ jupyterhub:
     networkPolicy:
       enabled: true
       egress:
-      - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-        ports:
-        - protocol: TCP
-          port: 80 # http
-        - protocol: TCP
-          port: 443 # https
-        - protocol: TCP
-          port: 873 # rsync
-        - protocol: TCP
-          port: 1094 # xroot
-        - protocol: TCP
-          port: 1095 # xroot
-        - protocol: TCP
-          port: 4001 # IPFS
-        - protocol: TCP
-          port: 9418 # git
-        - protocol: TCP
-          port: 16286 # Wolfram Engine on-demand licensing
+        - to:
+            - ipBlock:
+                cidr: 0.0.0.0/0
+          ports:
+            - protocol: TCP
+              port: 80 # http
+            - protocol: TCP
+              port: 443 # https
+            - protocol: TCP
+              port: 873 # rsync
+            - protocol: TCP
+              port: 1094 # xroot
+            - protocol: TCP
+              port: 1095 # xroot
+            - protocol: TCP
+              port: 4001 # IPFS
+            - protocol: TCP
+              port: 9418 # git
+            - protocol: TCP
+              port: 16286 # Wolfram Engine on-demand licensing
       egressAllowRules:
         # It is important to disable nonPrivateIPs otherwise the networkPolicy's will be silently ignored
         nonPrivateIPs: false
@@ -529,7 +529,7 @@ jupyterhub:
 mongodb:
   enabled: true
   image:
-    tag: "latest"
+    tag: "8.2.5"
   resources:
     requests:
       memory: "512Mi"
@@ -546,7 +546,7 @@ elasticsearch:
       memory: "2Gi"
       cpu: "500m"
     limits:
-      memory: "2Gi"  # Hard limit prevents OOM; ES heap is set relative to this
+      memory: "2Gi" # Hard limit prevents OOM; ES heap is set relative to this
 
 temporal:
   enabled: true
