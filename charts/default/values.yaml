@@ -529,7 +529,17 @@ jupyterhub:
 mongodb:
   enabled: true
   image:
+    repository: mongo
     tag: "8.2.5"
+    pullPolicy: IfNotPresent
+  auth:
+    enabled: true
+    rootPassword: ""
+    existingSecret: ""
+  persistence:
+    enabled: true
+    size: 8Gi
+    storageClass: ""
   resources:
     requests:
       memory: "512Mi"
