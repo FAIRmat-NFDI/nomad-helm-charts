@@ -3,7 +3,7 @@ mongodb:
   image:
     registry: docker.io
     repository: bitnami/mongodb
-    tag: "7.0.29"
+    tag: "latest"
   persistence:
     enabled: false
   resources:
@@ -131,7 +131,7 @@ nomad:
 
     keycloak:
       server_url: "https://nomad-lab.eu/fairdi/keycloak/auth/"
-      realm_name: "fairdi_nomad_prod"  # or fairdi_nomad_test for test/dev
+      realm_name: "fairdi_nomad_prod" # or fairdi_nomad_test for test/dev
       username: admin
       client_id: "nomad_public"
 

@@ -529,7 +529,7 @@ jupyterhub:
 mongodb:
   enabled: true
   image:
-    tag: "7.0.29"
+    tag: "latest"
   resources:
     requests:
       memory: "512Mi"
@@ -549,7 +549,7 @@ elasticsearch:
       memory: "2Gi"  # Hard limit prevents OOM; ES heap is set relative to this
 
 temporal:
-  enabled: false
+  enabled: true
   schema:
     createDatabase:
       enabled: false
@@ -574,6 +574,8 @@ temporal:
   server:
     replicaCount: 1
     config:
+      publicClient:
+        hostPort: "nomad-oasis-temporal-frontend:7233"
       namespaces:
         create: true
       persistence:
@@ -581,6 +583,7 @@ temporal:
           driver: sql
           sql:
             driver: postgres12
+            host: "nomad-oasis-postgresql"
             port: 5432
             database: temporal
             user: temporal
@@ -593,6 +596,7 @@ temporal:
           driver: sql
           sql:
             driver: postgres12
+            host: "nomad-oasis-postgresql"
             port: 5432
             database: temporal_visibility
             user: temporal
@@ -602,7 +606,7 @@ temporal:
             maxConnLifetime: 1h
 
 postgresql:
-  enabled: false
+  enabled: true
   image:
     repository: bitnamilegacy/postgresql
   global:
