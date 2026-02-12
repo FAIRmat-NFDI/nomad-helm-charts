@@ -352,6 +352,41 @@ nomad:
       nginx.ingress.kubernetes.io/proxy-body-size: 32g
     tls: []
 
+  # Persistence configuration for data volumes.
+  # When enabled, PersistentVolumeClaims are used instead of hostPath volumes.
+  # This is required for cloud deployments (e.g. AWS EKS) where pods run on
+  # multiple nodes and need shared, durable storage.
+  # For AWS, use the EFS CSI driver with a ReadWriteMany StorageClass.
+  persistence:
+    enabled: false
+    # Default StorageClass applied to all volumes unless overridden per-volume.
+    # For AWS EFS, set this to your EFS StorageClass name (e.g. "efs-sc").
+    storageClass: ""
+    public:
+      existingClaim: ""
+      size: 10Gi
+      accessModes:
+        - ReadWriteMany
+      storageClass: ""  # Override the default storageClass for this volume
+    staging:
+      existingClaim: ""
+      size: 10Gi
+      accessModes:
+        - ReadWriteMany
+      storageClass: ""
+    nomad:
+      existingClaim: ""
+      size: 5Gi
+      accessModes:
+        - ReadWriteMany
+      storageClass: ""
+    northHome:
+      existingClaim: ""
+      size: 5Gi
+      accessModes:
+        - ReadWriteMany
+      storageClass: ""
+
   volumes: []
   volumeMounts: []
   service:

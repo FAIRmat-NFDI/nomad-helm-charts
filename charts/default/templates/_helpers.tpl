@@ -111,3 +111,45 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{- $warnings | toJson }}
 {{- end }}
+
+{{/*
+Generate a PVC name for a given volume.
+Usage: {{ include "nomad.pvcName" (dict "root" . "volume" "public") }}
+*/}}
+{{- define "nomad.pvcName" -}}
+{{- printf "%s-%s" (include "nomad.fullname" .root) .volume }}
+{{- end }}
+
+{{/*
+Render a volume spec as either hostPath or persistentVolumeClaim.
+Usage: {{ include "nomad.volumeSpec" (dict "root" . "name" "public-volume" "volume" "public" "hostPath" $config.fs.public_external) }}
+Optionally set "pvcVolume" to override the PVC name suffix (e.g. "north-home" instead of "northHome").
+*/}}
+{{- define "nomad.volumeSpec" -}}
+- name: {{ .name }}
+{{- if .root.Values.nomad.persistence.enabled }}
+  persistentVolumeClaim:
+    claimName: {{ default (include "nomad.pvcName" (dict "root" .root "volume" (default .volume .pvcVolume))) (index .root.Values.nomad.persistence .volume).existingClaim }}
+{{- else }}
+  hostPath:
+    path: {{ .hostPath }}
+{{- end }}
+{{- end }}
+
+{{/*
+Render the staging volume spec, which supports emptyDir (memory), hostPath, or PVC.
+Usage: {{ include "nomad.stagingVolumeSpec" (dict "root" . "hostPath" $config.fs.staging_external) }}
+*/}}
+{{- define "nomad.stagingVolumeSpec" -}}
+- name: staging-volume
+{{- if (eq .root.Values.nomad.worker.storage "memory") }}
+  emptyDir:
+    medium: 'Memory'
+{{- else if .root.Values.nomad.persistence.enabled }}
+  persistentVolumeClaim:
+    claimName: {{ default (include "nomad.pvcName" (dict "root" .root "volume" "staging")) .root.Values.nomad.persistence.staging.existingClaim }}
+{{- else }}
+  hostPath:
+    path: {{ .hostPath }}
+{{- end }}
+{{- end }}

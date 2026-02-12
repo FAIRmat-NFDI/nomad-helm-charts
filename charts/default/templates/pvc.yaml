@@ -1,0 +1,88 @@
+{{- if and .Values.nomad.enabled .Values.nomad.persistence.enabled -}}
+{{- $fullname := include "nomad.fullname" . -}}
+{{- $defaultSC := .Values.nomad.persistence.storageClass -}}
+
+{{- /* Public volume PVC */ -}}
+{{- if not .Values.nomad.persistence.public.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-public
+  labels:
+    {{- include "nomad.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    {{- toYaml .Values.nomad.persistence.public.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.nomad.persistence.public.size }}
+  {{- $sc := default $defaultSC .Values.nomad.persistence.public.storageClass }}
+  {{- if $sc }}
+  storageClassName: {{ $sc }}
+  {{- end }}
+{{- end }}
+---
+{{- /* Staging volume PVC (only if not using memory storage) */ -}}
+{{- if and (not .Values.nomad.persistence.staging.existingClaim) (ne .Values.nomad.worker.storage "memory") }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-staging
+  labels:
+    {{- include "nomad.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    {{- toYaml .Values.nomad.persistence.staging.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.nomad.persistence.staging.size }}
+  {{- $sc := default $defaultSC .Values.nomad.persistence.staging.storageClass }}
+  {{- if $sc }}
+  storageClassName: {{ $sc }}
+  {{- end }}
+{{- end }}
+---
+{{- /* Nomad volume PVC */ -}}
+{{- if not .Values.nomad.persistence.nomad.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-nomad
+  labels:
+    {{- include "nomad.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    {{- toYaml .Values.nomad.persistence.nomad.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.nomad.persistence.nomad.size }}
+  {{- $sc := default $defaultSC .Values.nomad.persistence.nomad.storageClass }}
+  {{- if $sc }}
+  storageClassName: {{ $sc }}
+  {{- end }}
+{{- end }}
+---
+{{- /* North home volume PVC */ -}}
+{{- if not .Values.nomad.persistence.northHome.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-north-home
+  labels:
+    {{- include "nomad.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    {{- toYaml .Values.nomad.persistence.northHome.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.nomad.persistence.northHome.size }}
+  {{- $sc := default $defaultSC .Values.nomad.persistence.northHome.storageClass }}
+  {{- if $sc }}
+  storageClassName: {{ $sc }}
+  {{- end }}
+{{- end }}
+{{- end }}

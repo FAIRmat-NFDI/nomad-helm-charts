@@ -165,23 +165,9 @@ spec:
         - name: nomad-conf
           configMap:
             name: {{ include "nomad.fullname" . }}-configmap
-        - name: public-volume
-          hostPath:
-            path: {{ $config.fs.public_external }}
-            # type: Directory
-        - name: staging-volume
-          {{ if (eq .Values.nomad.worker.storage "memory") }}
-          emptyDir:
-            medium: 'Memory'
-          {{ else }}
-          hostPath:
-            path: {{ $config.fs.staging_external }}
-            # type: Directory
-          {{ end }}
-        - name: nomad-volume
-          hostPath:
-            path: {{ $config.fs.nomad }}
-            # type: Directory
+        {{- include "nomad.volumeSpec" (dict "root" . "name" "public-volume" "volume" "public" "hostPath" $config.fs.public_external) | nindent 8 }}
+        {{- include "nomad.stagingVolumeSpec" (dict "root" . "hostPath" $config.fs.staging_external) | nindent 8 }}
+        {{- include "nomad.volumeSpec" (dict "root" . "name" "nomad-volume" "volume" "nomad" "hostPath" $config.fs.nomad) | nindent 8 }}
 
       {{- with .Values.nomad.worker.nodeSelector }}
       nodeSelector:
