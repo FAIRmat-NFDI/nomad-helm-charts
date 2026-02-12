@@ -2,9 +2,6 @@ dependencies:
 - name: elasticsearch
   repository: https://helm.elastic.co
   version: 7.17.3
-- name: mongodb
-  repository: oci://registry-1.docker.io/bitnamicharts
-  version: 14.0.4
 - name: jupyterhub
   repository: https://jupyterhub.github.io/helm-chart/
   version: 3.2.1
@@ -14,5 +11,5 @@ dependencies:
 - name: postgresql
   repository: https://charts.bitnami.com/bitnami
   version: 12.1.6
-digest: sha256:6946afac49258bfb67ab36b6cf4b80f08c7eab75c37c99278f94b8d28d78c514
-generated: "2026-01-21T08:59:27.961772623+01:00"
+digest: sha256:be13871d752e601f6cbb46fc775b7499fab90f774257c36b6eba36dfb74b17c5
+generated: "2026-02-11T15:21:40.112414758+01:00"

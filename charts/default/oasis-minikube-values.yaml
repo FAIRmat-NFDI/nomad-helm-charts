@@ -1,10 +1,12 @@
 mongodb:
   enabled: true
   image:
-    registry: docker.io
-    repository: bitnami/mongodb
-    tag: "latest"
+    repository: mongo
+    tag: "8.2.5"
+    pullPolicy: IfNotPresent
   persistence:
+    enabled: false
+  auth:
     enabled: false
   resources:
     limits:
@@ -13,18 +15,6 @@ mongodb:
     requests:
       cpu: 250m
       memory: 512Mi
-  livenessProbe:
-    initialDelaySeconds: 60
-    periodSeconds: 30
-    timeoutSeconds: 30
-    failureThreshold: 10
-  readinessProbe:
-    initialDelaySeconds: 60
-    periodSeconds: 10
-    timeoutSeconds: 10
-    failureThreshold: 10
-  auth:
-    enabled: false
 
 elasticsearch:
   enabled: true
@@ -131,7 +121,7 @@ nomad:
 
     keycloak:
       server_url: "https://nomad-lab.eu/fairdi/keycloak/auth/"
-      realm_name: "fairdi_nomad_test"
+      realm_name: "fairdi_nomad_prod" # or fairdi_nomad_test for test/dev
       username: admin
       client_id: "nomad_public"
 
@@ -150,7 +140,7 @@ nomad:
 
     oasis:
       is_oasis: true
-      uses_central_user_management: false
+      uses_central_user_management: true
 
   image:
     repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
@@ -196,11 +186,11 @@ nomad:
 
   infrastructure:
     mongo:
-      host: ""  # defaults to {{ .Release.Name }}-mongodb
+      host: "" # defaults to {{ .Release.Name }}-mongodb
     elastic:
-      host: ""  # defaults to elasticsearch-master
+      host: "" # defaults to elasticsearch-master
     rabbitmq:
-      host: ""  # defaults to {{ .Release.Name }}-rabbitmq
+      host: "" # defaults to {{ .Release.Name }}-rabbitmq
     logstash:
       host: ""
 
@@ -299,9 +289,9 @@ jupyterhub:
       GenericOAuthenticator:
         client_id: nomad_public
         oauth_callback_url: http://nomad-oasis.local/nomad-oasis/north/hub/oauth_callback
-        authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/auth
-        token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/token
-        userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/userinfo
+        authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/auth
+        token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
+        userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
     extraEnv:
       NOMAD_OASIS_URL: "http://nomad-oasis-proxy/nomad-oasis"
     db:
@@ -316,6 +306,7 @@ jupyterhub:
     image:
       name: jupyter/minimal-notebook
       tag: latest
+      pullPolicy: IfNotPresent
     cpu:
       limit: 1
       guarantee: 0.25

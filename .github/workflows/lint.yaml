@@ -3,8 +3,8 @@ name: Lint and Test Charts
 on:
   pull_request:
     paths:
-      - 'charts/**'
-      - '.github/workflows/lint.yaml'
+      - "charts/**"
+      - ".github/workflows/lint.yaml"
 
 jobs:
   lint:
@@ -34,11 +34,11 @@ jobs:
       - name: Run chart-testing (list-changed)
         id: list-changed
         run: |
-          changed=$(ct list-changed --config ct.yaml --target-branch ${{ github.event.repository.default_branch }})
+          changed=$(ct list-changed --config .github/ct.yaml --target-branch ${{ github.event.repository.default_branch }})
           if [[ -n "$changed" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run chart-testing (lint)
         if: steps.list-changed.outputs.changed == 'true'
-        run: ct lint --config ct.yaml --target-branch ${{ github.event.repository.default_branch }}
+        run: ct lint --config .github/ct.yaml --target-branch ${{ github.event.repository.default_branch }}

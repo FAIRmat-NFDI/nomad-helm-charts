@@ -59,14 +59,14 @@ spec:
             httpGet:
               path: "{{ $config.services.api_base_path }}/alive"
               port: 8000
-            initialDelaySeconds: 300
+            initialDelaySeconds: 420
             periodSeconds: 15
             timeoutSeconds: {{ add .Values.nomad.proxy.timeout 15}}
           readinessProbe:
             httpGet:
               path: "{{ $config.services.api_base_path }}/alive"
               port: 8000
-            initialDelaySeconds: 300
+            initialDelaySeconds: 420
             periodSeconds: 15
             timeoutSeconds: {{ add .Values.nomad.proxy.timeout 15 }}
           {{- with .Values.nomad.app.resources }}

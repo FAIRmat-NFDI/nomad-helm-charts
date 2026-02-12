@@ -2,8 +2,8 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 roll: false
-nameOverride: ''
-fullnameOverride: ''
+nameOverride: ""
+fullnameOverride: ""
 
 serviceAccount:
   # Specifies whether a service account should be created
@@ -14,7 +14,7 @@ serviceAccount:
   annotations: {}
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
-  name: ''
+  name: ""
 
 nomad:
   enabled: true
@@ -254,13 +254,12 @@ nomad:
     podAnnotations: {}
     podLabels: {}
 
-
   worker:
     replicaCount: 1
     terminationGracePeriodSeconds: 300
     processes: null
     maxTasksPerChild: 128
-    storage: null  # "memory" or "disk"
+    storage: null # "memory" or "disk"
     autoscaling:
       enabled: false
       minReplicas: 1
@@ -277,9 +276,9 @@ nomad:
             scaleDown:
               stabilizationWindowSeconds: 1800
               policies:
-              - type: Percent
-                value: 25
-                periodSeconds: 600
+                - type: Percent
+                  value: 25
+                  periodSeconds: 600
     podSecurityContext: {}
     securityContext: {}
     resources:
@@ -346,9 +345,9 @@ nomad:
     enabled: false
     limitConnections: 32
     limitConnectionsApi: 8
-    className: ''
+    className: ""
     annotations:
-      nginx.ingress.kubernetes.io/ssl-redirect: 'false'
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
       nginx.ingress.kubernetes.io/proxy-body-size: 32g
     tls: []
 
@@ -375,26 +374,26 @@ jupyterhub:
     networkPolicy:
       enabled: true
       egress:
-      - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-        ports:
-        - protocol: TCP
-          port: 80 # http
-        - protocol: TCP
-          port: 443 # https
-        - protocol: TCP
-          port: 873 # rsync
-        - protocol: TCP
-          port: 1094 # xroot
-        - protocol: TCP
-          port: 1095 # xroot
-        - protocol: TCP
-          port: 4001 # IPFS
-        - protocol: TCP
-          port: 9418 # git
-        - protocol: TCP
-          port: 16286 # Wolfram Engine on-demand licensing
+        - to:
+            - ipBlock:
+                cidr: 0.0.0.0/0
+          ports:
+            - protocol: TCP
+              port: 80 # http
+            - protocol: TCP
+              port: 443 # https
+            - protocol: TCP
+              port: 873 # rsync
+            - protocol: TCP
+              port: 1094 # xroot
+            - protocol: TCP
+              port: 1095 # xroot
+            - protocol: TCP
+              port: 4001 # IPFS
+            - protocol: TCP
+              port: 9418 # git
+            - protocol: TCP
+              port: 16286 # Wolfram Engine on-demand licensing
       egressAllowRules:
         # It is important to disable nonPrivateIPs otherwise the networkPolicy's will be silently ignored
         nonPrivateIPs: false
@@ -422,12 +421,9 @@ jupyterhub:
       GenericOAuthenticator:
         client_id: nomad_public
         oauth_callback_url:
-        authorize_url:
-          https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/auth
-        token_url:
-          https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/token
-        userdata_url:
-          https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/userinfo
+        authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/auth
+        token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
+        userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
         login_service: keycloak
         username_key: preferred_username
         userdata_params:
@@ -532,6 +528,18 @@ jupyterhub:
 
 mongodb:
   enabled: true
+  image:
+    repository: mongo
+    tag: "8.2.5"
+    pullPolicy: IfNotPresent
+  auth:
+    enabled: true
+    rootPassword: ""
+    existingSecret: ""
+  persistence:
+    enabled: true
+    size: 8Gi
+    storageClass: ""
   resources:
     requests:
       memory: "512Mi"
@@ -548,10 +556,10 @@ elasticsearch:
       memory: "2Gi"
       cpu: "500m"
     limits:
-      memory: "2Gi"  # Hard limit prevents OOM; ES heap is set relative to this
+      memory: "2Gi" # Hard limit prevents OOM; ES heap is set relative to this
 
 temporal:
-  enabled: false
+  enabled: true
   schema:
     createDatabase:
       enabled: false
@@ -576,6 +584,8 @@ temporal:
   server:
     replicaCount: 1
     config:
+      publicClient:
+        hostPort: "nomad-oasis-temporal-frontend:7233"
       namespaces:
         create: true
       persistence:
@@ -583,6 +593,7 @@ temporal:
           driver: sql
           sql:
             driver: postgres12
+            host: "nomad-oasis-postgresql"
             port: 5432
             database: temporal
             user: temporal
@@ -595,6 +606,7 @@ temporal:
           driver: sql
           sql:
             driver: postgres12
+            host: "nomad-oasis-postgresql"
             port: 5432
             database: temporal_visibility
             user: temporal
@@ -604,7 +616,7 @@ temporal:
             maxConnLifetime: 1h
 
 postgresql:
-  enabled: false
+  enabled: true
   image:
     repository: bitnamilegacy/postgresql
   global:

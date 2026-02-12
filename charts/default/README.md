@@ -135,6 +135,52 @@ nomad:
 
 By default, the chart uses the NOMAD central Keycloak. For a private instance, configure your own identity provider — see [Authentication](#authentication-keycloak) below.
 
+### MongoDB (`mongodb`)
+
+The chart deploys MongoDB using the official `mongo` Docker image with a pinned version.
+
+**Authentication** is enabled by default. You must provide a root password using one of these methods:
+
+1. **Values or secrets file**:
+   ```yaml
+   mongodb:
+     auth:
+       rootPassword: "my-secure-password"
+   ```
+   Or in a separate `secrets.yaml` (keep out of git):
+   ```bash
+   helm install nomad-oasis ./charts/default -f values.yaml -f secrets.yaml
+   ```
+
+2. **Pre-created Kubernetes secret**:
+   ```yaml
+   mongodb:
+     auth:
+       existingSecret: "my-mongodb-secret"
+   ```
+   Create the secret:
+   ```bash
+   kubectl create secret generic my-mongodb-secret \
+     --from-literal=mongodb-root-password=$(openssl rand -hex 32)
+   ```
+
+3. **`--set` flag**:
+   ```bash
+   helm install nomad-oasis ./charts/default \
+     -f values.yaml \
+     --set mongodb.auth.rootPassword="${MONGO_ROOT_PASSWORD}"
+   ```
+
+To disable authentication (e.g. for development reasons):
+```yaml
+mongodb:
+  auth:
+    enabled: false
+```
+
+> [!WARNING]
+> Disabling MongoDB authentication is not recommended for production. Even within a Kubernetes cluster, any pod in the same namespace can access an unauthenticated MongoDB instance.
+
 ## Secrets Management
 
 The chart supports multiple methods for managing secrets:
@@ -465,9 +511,9 @@ jupyterhub:
       GenericOAuthenticator:
         client_id: nomad_public
         oauth_callback_url: http://your-host/nomad-oasis/north/hub/oauth_callback
-        authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/auth
-        token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/token
-        userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/userinfo
+        authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/auth
+        token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
+        userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
 ```
 
 > [!NOTE]
@@ -510,9 +556,9 @@ jupyterhub:
       GenericOAuthenticator:
         client_id: nomad_public
         oauth_callback_url: http://your-host/nomad-oasis/north/hub/oauth_callback
-        authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/auth
-        token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/token
-        userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_test/protocol/openid-connect/userinfo
+        authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/auth
+        token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
+        userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
 ```
 
 Create the hub service API token secret:
