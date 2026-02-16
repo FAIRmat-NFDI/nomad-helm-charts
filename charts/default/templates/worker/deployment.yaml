@@ -41,6 +41,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "nomad.serviceAccountName" . }}
+      enableServiceLinks: false
       terminationGracePeriodSeconds: {{ .Values.nomad.worker.terminationGracePeriodSeconds | default 300 }}
       {{- with .Values.nomad.worker.podSecurityContext }}
       securityContext:
@@ -77,18 +78,13 @@ spec:
           env:
             - name: MPLCONFIGDIR
               value: /tmp/matplotlib
-            - name: CELERY_ACKS_LATE
-              value: "True"
             - name: NOMAD_META_SERVICE
               value: "worker"
             - name: NOMAD_CONSOLE_LOG_LEVEL
               value: "{{ $config.logging.worker.console_loglevel }}"
             - name: NOMAD_LOGSTASH_LEVEL
               value: "{{ $config.logging.worker.logstash_loglevel }}"
-            - name: NOMAD_CELERY_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
+
             {{- if or .Values.nomad.secrets.api.existingSecret .Values.nomad.secrets.api.value .Values.nomad.secrets.api.autoGenerate }}
             - name: NOMAD_SERVICES_API_SECRET
               valueFrom:
@@ -110,51 +106,31 @@ spec:
                   name: {{ include "nomad.secretName.keycloakPassword" . }}
                   key: {{ .Values.nomad.secrets.keycloak.password.key }}
             {{- end }}
-          {{- if $config.temporal.enabled }}
+
           # See https://keithtenzer.com/temporal/Deploying_Temporal_Worker_on_Kubernetes/#liveliness-and-readiness-probes
           # for rationale on using 'ls /' as a liveness/readiness probe for Temporal workers.
           command: ["python", "-m", "nomad.cli", "admin", "run", "action-internal-worker"]
-          readinessProbe:
-            exec:
-              command:
-              - ls
-              - /
-            failureThreshold: 3
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            successThreshold: 1
-            timeoutSeconds: 1
           livenessProbe:
             exec:
               command:
-              - ls
-              - /
-            failureThreshold: 3
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            successThreshold: 1
-            timeoutSeconds: 1
-          {{- else }}
-          command: ["python", "-m", "celery", "-A", "nomad.processing", "worker", "-n", "$(NOMAD_CELERY_NODE_NAME)" {{ if .Values.nomad.worker.processes }}, "-c", "{{ .Values.nomad.worker.processes }}"{{ end }}{{ if .Values.nomad.worker.maxTasksPerChild }}, "--max-tasks-per-child", "{{ .Values.nomad.worker.maxTasksPerChild }}"{{ end }}]
-          livenessProbe:
-            exec:
-              command:
-              - bash
-              - -c
-              - NOMAD_LOGSTASH_LEVEL=WARNING python -m celery -A nomad.processing status | grep "${NOMAD_CELERY_NODE_NAME}:.*OK"
-            initialDelaySeconds: 300
-            periodSeconds: 120
-            timeoutSeconds: 60
+              - /bin/bash
+              - -ec
+              - "ls /"
+            initialDelaySeconds: {{ .Values.nomad.worker.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.nomad.worker.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.nomad.worker.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.nomad.worker.livenessProbe.failureThreshold }}
           readinessProbe:
             exec:
               command:
-              - bash
-              - -c
-              - NOMAD_LOGSTASH_LEVEL=WARNING python -m celery -A nomad.processing status | grep "${NOMAD_CELERY_NODE_NAME}:.*OK"
-            initialDelaySeconds: 300
-            periodSeconds: 120
-            timeoutSeconds: 60
-          {{- end }}
+              - /bin/bash
+              - -ec
+              - "ls /"
+            initialDelaySeconds: {{ .Values.nomad.worker.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.nomad.worker.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.nomad.worker.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.nomad.worker.readinessProbe.failureThreshold }}1
+
       volumes:
       {{- with .Values.nomad.volumes }}
         {{- toYaml . | nindent 8 }}

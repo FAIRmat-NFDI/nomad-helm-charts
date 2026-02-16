@@ -39,6 +39,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "nomad.serviceAccountName" . }}
+      enableServiceLinks: false
       {{- with .Values.nomad.cpuworker.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
@@ -78,18 +79,14 @@ spec:
           env:
             - name: MPLCONFIGDIR
               value: /tmp/matplotlib
-            - name: CELERY_ACKS_LATE
-              value: "True"
+
             - name: NOMAD_META_SERVICE
               value: "worker"
             - name: NOMAD_CONSOLE_LOG_LEVEL
               value: "{{ $config.logging.worker.console_loglevel }}"
             - name: NOMAD_LOGSTASH_LEVEL
               value: "{{ $config.logging.worker.logstash_loglevel }}"
-            - name: NOMAD_CELERY_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
+
             {{- if .Values.nomad.secrets.api.secretName }}
             - name: NOMAD_SERVICES_API_SECRET
               valueFrom:
@@ -114,26 +111,26 @@ spec:
           # See https://keithtenzer.com/temporal/Deploying_Temporal_Worker_on_Kubernetes/#liveliness-and-readiness-probes
           # for rationale on using 'ls /' as a liveness/readiness probe for Temporal workers.
           command: ["python", "-m", "nomad.cli", "admin", "run", "action-cpu-worker"]
-          readinessProbe:
-            exec:
-              command:
-              - ls
-              - /
-            failureThreshold: 3
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            successThreshold: 1
-            timeoutSeconds: 1
           livenessProbe:
             exec:
               command:
-              - ls
-              - /
-            failureThreshold: 3
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            successThreshold: 1
-            timeoutSeconds: 1
+              - /bin/bash
+              - -ec
+              - "ls /"
+            initialDelaySeconds: {{ .Values.nomad.cpuworker.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.nomad.cpuworker.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.nomad.cpuworker.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.nomad.cpuworker.livenessProbe.failureThreshold }}
+          readinessProbe:
+            exec:
+              command:
+              - /bin/bash
+              - -ec
+              - "ls /"
+            initialDelaySeconds: {{ .Values.nomad.cpuworker.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.nomad.cpuworker.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.nomad.cpuworker.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.nomad.cpuworker.readinessProbe.failureThreshold }}
       volumes:
       {{- with .Values.nomad.volumes }}
         {{- toYaml . | nindent 8 }}
