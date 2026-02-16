@@ -149,14 +149,7 @@ data:
 {{- $_ := set $computed "reprocess" $reprocess }}
 {{- end }}
 
-{{- if $config.celery }}
-{{- $celery := dict
-    "routing" $config.celery.routing
-    "timeout" $config.celery.timeout
-    "acks_late" $config.celery.acks_late
-}}
-{{- $_ := set $computed "celery" $celery }}
-{{- end }}
+
 
 {{- if $config.mail }}
 {{- $mail := dict

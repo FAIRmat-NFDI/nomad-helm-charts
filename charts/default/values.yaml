@@ -54,7 +54,7 @@ nomad:
       tcp_port: 5000
 
     temporal:
-      enabled: false
+      enabled: true
       namespace: default
       graceful_shutdown_timeout: null
       processing_timeouts: {}
@@ -85,11 +85,6 @@ nomad:
       delete_unmatched_published_entries: false
       index_individual_entries: false
 
-    celery:
-      routing: queue
-      timeout: 7200
-      acks_late: false
-
     logging:
       app:
         console_loglevel: INFO
@@ -111,10 +106,10 @@ nomad:
       user: admin
 
     keycloak:
-      server_url: ""
-      realm_name: ""
+      server_url: "https://nomad-lab.eu/fairdi/keycloak/auth/"
+      realm_name: "fairdi_nomad_prod" # or fairdi_nomad_test for test/dev
       username: admin
-      client_id: ""
+      client_id: "nomad_public"
 
     datacite:
       enabled: false
@@ -132,7 +127,7 @@ nomad:
 
     oasis:
       is_oasis: true
-      uses_central_user_management: false
+      uses_central_user_management: true
 
     # plugins: {}
     # normalize: {}
@@ -141,7 +136,7 @@ nomad:
 
   image:
     repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
-    tag: latest
+    tag: v1.4.1
     pullPolicy: Always
 
   imagePullSecrets: []
@@ -232,6 +227,14 @@ nomad:
     affinity: {}
     podAnnotations: {}
     podLabels: {}
+    livenessProbe:
+      initialDelaySeconds: 90
+      periodSeconds: 10
+      timeoutSeconds: 70
+    readinessProbe:
+      initialDelaySeconds: 90
+      periodSeconds: 3
+      timeoutSeconds: 63
 
   app:
     replicaCount: 1
@@ -253,6 +256,14 @@ nomad:
     affinity: {}
     podAnnotations: {}
     podLabels: {}
+    livenessProbe:
+      initialDelaySeconds: 420
+      periodSeconds: 15
+      timeoutSeconds: 75
+    readinessProbe:
+      initialDelaySeconds: 420
+      periodSeconds: 15
+      timeoutSeconds: 75
 
   worker:
     replicaCount: 1
@@ -294,6 +305,18 @@ nomad:
     affinity: {}
     podAnnotations: {}
     podLabels: {}
+    livenessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 300
+      periodSeconds: 120
+      successThreshold: 1
+      timeoutSeconds: 60
+    readinessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 300
+      periodSeconds: 120
+      successThreshold: 1
+      timeoutSeconds: 60
 
   gpuworker:
     replicaCount: 0
@@ -310,6 +333,18 @@ nomad:
     affinity: {}
     podAnnotations: {}
     podLabels: {}
+    livenessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      successThreshold: 1
+      timeoutSeconds: 1
+    readinessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      successThreshold: 1
+      timeoutSeconds: 1
 
   cpuworker:
     replicaCount: 0
@@ -326,6 +361,18 @@ nomad:
     affinity: {}
     podAnnotations: {}
     podLabels: {}
+    livenessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      successThreshold: 1
+      timeoutSeconds: 1
+    readinessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      successThreshold: 1
+      timeoutSeconds: 1
 
   adminconsole:
     enabled: false
@@ -340,6 +387,14 @@ nomad:
     affinity: {}
     podAnnotations: {}
     podLabels: {}
+    livenessProbe:
+      initialDelaySeconds: 30
+      periodSeconds: 120
+      timeoutSeconds: 60
+    readinessProbe:
+      initialDelaySeconds: 30
+      periodSeconds: 120
+      timeoutSeconds: 60
 
   ingress:
     enabled: false
@@ -546,9 +601,21 @@ mongodb:
       cpu: "250m"
     limits:
       memory: "1Gi"
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 20
+    timeoutSeconds: 10
+    failureThreshold: 6
+  readinessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
 
 elasticsearch:
   enabled: true
+  replicas: 1
+  minimumMasterNodes: 1
   # Elasticsearch is memory-bound. The JVM heap should be ~50% of container memory.
   # These defaults are conservative for development; increase for production.
   resources:

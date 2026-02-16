@@ -63,16 +63,16 @@ spec:
             httpGet:
               path: "{{ $config.services.api_base_path }}/gui/index.html"
               port: http
-            initialDelaySeconds: 90
-            periodSeconds: 10
-            timeoutSeconds: {{ add .Values.nomad.proxy.timeout 10 }}
+            initialDelaySeconds: {{ .Values.nomad.proxy.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.nomad.proxy.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.nomad.proxy.livenessProbe.timeoutSeconds }}
           readinessProbe:
             httpGet:
               path: "{{ $config.services.api_base_path }}/gui/index.html"
               port: http
-            initialDelaySeconds: 90
-            periodSeconds: 3
-            timeoutSeconds: {{ add .Values.nomad.proxy.timeout 3}}
+            initialDelaySeconds: {{ .Values.nomad.proxy.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.nomad.proxy.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.nomad.proxy.readinessProbe.timeoutSeconds }}
           {{- with .Values.nomad.proxy.resources }}
           resources:
             {{- . | toYaml | nindent 12 }}

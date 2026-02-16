@@ -107,11 +107,6 @@ nomad:
       delete_unmatched_published_entries: false
       index_individual_entries: false
 
-    celery:
-      routing: queue
-      timeout: 7200
-      acks_late: false
-
     logging:
       app:
         console_loglevel: DEBUG

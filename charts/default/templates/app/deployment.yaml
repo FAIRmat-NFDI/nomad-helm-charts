@@ -39,6 +39,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "nomad.serviceAccountName" . }}
+      enableServiceLinks: false
       {{- with .Values.nomad.app.podSecurityContext }}
       securityContext:
         {{- . | toYaml | nindent 8 }}
@@ -57,18 +58,18 @@ spec:
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: "{{ $config.services.api_base_path }}/alive"
-              port: 8000
-            initialDelaySeconds: 420
-            periodSeconds: 15
-            timeoutSeconds: {{ add .Values.nomad.proxy.timeout 15}}
+              path: "{{ $config.services.api_base_path }}/gui/index.html"
+              port: http
+            initialDelaySeconds: {{ .Values.nomad.app.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.nomad.app.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.nomad.app.livenessProbe.timeoutSeconds }}
           readinessProbe:
             httpGet:
-              path: "{{ $config.services.api_base_path }}/alive"
-              port: 8000
-            initialDelaySeconds: 420
-            periodSeconds: 15
-            timeoutSeconds: {{ add .Values.nomad.proxy.timeout 15 }}
+              path: "{{ $config.services.api_base_path }}/gui/index.html"
+              port: http
+            initialDelaySeconds: {{ .Values.nomad.app.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.nomad.app.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.nomad.app.readinessProbe.timeoutSeconds }}
           {{- with .Values.nomad.app.resources }}
           resources:
             {{- . | toYaml | nindent 12 }}

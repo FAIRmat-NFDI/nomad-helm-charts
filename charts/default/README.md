@@ -131,6 +131,10 @@ nomad:
     tag: "v1.2.2"
 ```
 
+> [!TIP]
+> To access the latest features and improvements, we recommend updating the `nomad.image.tag` to the latest stable version. You can find the available tags in the [GitLab Registry](https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-FAIR/-/container_registry).
+
+
 ### Authentication (`nomad.config.keycloak`)
 
 By default, the chart uses the NOMAD central Keycloak. For a private instance, configure your own identity provider — see [Authentication](#authentication-keycloak) below.

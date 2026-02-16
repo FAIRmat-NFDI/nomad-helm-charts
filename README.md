@@ -102,6 +102,10 @@ All configuration lives under the `nomad` key in your values file. See [`charts/
 | `nomad.secrets` | API, Keycloak, and other secrets |
 | `nomad.infrastructure` | Service host overrides (auto-detected by default) |
 
+> [!TIP]
+> To access the latest features and improvements, we recommend updating the `nomad.image.tag` to the latest stable version. You can find the available tags in the [GitLab Registry](https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-FAIR/-/container_registry).
+
+
 ### Secrets
 
 The simplest approach for development is auto-generation (the default). For production, use pre-created Kubernetes secrets or use helm directly to apply secrets:
@@ -140,16 +144,6 @@ The `default` chart includes these subcharts (all disabled by default, enable as
 | [`kind-setup.sh`](helpers/kind-setup.sh) | Automated Kind environment setup and chart installation |
 | [`check-status.sh`](helpers/check-status.sh) | Deployment health diagnostics |
 | [`dev-utils.sh`](helpers/dev-utils.sh) | Shell aliases for development (`source helpers/dev-utils.sh`) |
-
-## Releases
-
-Chart releases are automated via GitHub Actions. When changes are pushed to `main`:
-
-1. Charts are packaged into `.tgz` files
-2. A GitHub Release is created with the package
-3. The Helm repository index (`index.yaml`) is updated on the `gh-pages` branch
-
-**Versioning:** Release versions are determined by the `version` field in each chart's `Chart.yaml`. Bump this version following [Semantic Versioning](https://semver.org/) when making changes.
 
 ## Further Documentation
 
