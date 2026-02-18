@@ -111,3 +111,50 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{- $warnings | toJson }}
 {{- end }}
+
+{{/*
+Generate a volume definition for a data volume.
+Supports hostPath (default) or PVC when persistence is enabled.
+Usage:
+  {{- include "nomad.dataVolume" (dict "root" . "name" "public-volume" "volumeKey" "public" "hostPath" $config.fs.public_external) | nindent 8 }}
+*/}}
+{{- define "nomad.dataVolume" -}}
+{{- $persistence := .root.Values.nomad.persistence -}}
+{{- $volumeConfig := index $persistence .volumeKey -}}
+- name: {{ .name }}
+{{- if $persistence.enabled }}
+  persistentVolumeClaim:
+    claimName: {{ default (printf "%s-%s" (include "nomad.fullname" .root) .volumeKey) $volumeConfig.existingClaim }}
+{{- else }}
+  hostPath:
+    path: {{ .hostPath }}
+{{- end }}
+{{- end }}
+
+{{/*
+Generate PVC spec for a data volume.
+Usage:
+  {{- include "nomad.pvc" (dict "root" . "volumeKey" "public" "component" "public") }}
+*/}}
+{{- define "nomad.pvc" -}}
+{{- $persistence := .root.Values.nomad.persistence -}}
+{{- $volumeConfig := index $persistence .volumeKey -}}
+{{- $storageClass := default $persistence.storageClass $volumeConfig.storageClass -}}
+{{- $accessMode := default $persistence.accessMode $volumeConfig.accessMode -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nomad.fullname" .root }}-{{ .volumeKey }}
+  labels:
+    {{- include "nomad.labels" .root | nindent 4 }}
+    app.kubernetes.io/component: {{ .component }}
+spec:
+  accessModes:
+    - {{ $accessMode }}
+  {{- if $storageClass }}
+  storageClassName: {{ $storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $volumeConfig.size }}
+{{- end }}

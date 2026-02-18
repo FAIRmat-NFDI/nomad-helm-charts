@@ -56,7 +56,7 @@ minikube addons enable storage-provisioner
 # Step 4: Create host directories for nomad data
 echo ""
 echo "Step 4: Creating data directories on minikube node..."
-minikube ssh -- 'sudo mkdir -p /data/nomad/{public,staging,north/users,tmp}'
+minikube ssh -- 'sudo mkdir -p /data/nomad/{public,staging,north/users}'
 minikube ssh -- 'sudo chmod -R 777 /data/nomad'
 minikube ssh -- 'sudo mkdir -p /nomad && sudo chmod -R 777 /nomad'
 
@@ -79,7 +79,7 @@ kubectl create secret generic nomad-hub-service-api-token \
 echo ""
 echo "Step 7: Installing NOMAD Oasis chart..."
 helm install "$RELEASE_NAME" . \
-  -f oasis-minikube-values.yaml \
+  -f custom-values/minikube.yaml \
   -n "$NAMESPACE" \
   --timeout 15m
 

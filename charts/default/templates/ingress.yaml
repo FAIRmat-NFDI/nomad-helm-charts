@@ -22,11 +22,13 @@ metadata:
   labels:
     {{- include "nomad.labels" . | nindent 4 }}
   annotations:
+    {{- if ne .Values.nomad.ingress.className "alb" }}
     nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "{{ .Values.nomad.proxy.timeout }}"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "{{ .Values.nomad.proxy.timeout }}"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "{{ .Values.nomad.proxy.connectionTimeout }}"
     nginx.ingress.kubernetes.io/limit-connections: "{{ .Values.nomad.ingress.limitConnections }}"
+    {{- end }}
     {{- with .Values.nomad.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -49,7 +51,7 @@ spec:
       http:
         paths:
           - path: {{ $path }}
-            pathType: ImplementationSpecific
+            pathType: Prefix
             backend:
               {{- if semverCompare ">=1.19-0" $.Capabilities.KubeVersion.GitVersion }}
               service:

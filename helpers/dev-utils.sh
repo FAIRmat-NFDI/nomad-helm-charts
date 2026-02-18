@@ -5,8 +5,8 @@
 NAMESPACE="${NAMESPACE:-nomad-oasis}"
 
 # Deployment Management
-alias deploy-oasis='cd $(git rev-parse --show-toplevel)/charts/default && helm upgrade nomad-oasis . -f oasis-minikube-values.yaml -n nomad-oasis'
-alias install-oasis='cd $(git rev-parse --show-toplevel)/charts/default && helm install nomad-oasis . -f oasis-minikube-values.yaml -n nomad-oasis --create-namespace'
+alias deploy-oasis='cd $(git rev-parse --show-toplevel)/charts/default && helm upgrade nomad-oasis . -f custom-values/minikube.yaml -n nomad-oasis'
+alias install-oasis='cd $(git rev-parse --show-toplevel)/charts/default && helm install nomad-oasis . -f custom-values/minikube.yaml -n nomad-oasis --create-namespace'
 alias restart-app='kubectl rollout restart deployment nomad-oasis-app nomad-oasis-worker -n nomad-oasis'
 alias restart-hub='kubectl rollout restart deployment nomad-oasis-jupyterhub-hub -n nomad-oasis'
 alias nuke-oasis='helm uninstall nomad-oasis -n nomad-oasis && kubectl delete pvc --all -n nomad-oasis'

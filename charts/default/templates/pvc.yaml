@@ -1,0 +1,17 @@
+{{- if .Values.nomad.persistence.enabled -}}
+{{- if not .Values.nomad.persistence.public.existingClaim }}
+{{ include "nomad.pvc" (dict "root" . "volumeKey" "public" "component" "public") }}
+{{- end }}
+---
+{{- if and (not .Values.nomad.persistence.staging.existingClaim) (ne .Values.nomad.worker.storage "memory") }}
+{{ include "nomad.pvc" (dict "root" . "volumeKey" "staging" "component" "staging") }}
+{{- end }}
+---
+{{- if not (index .Values.nomad.persistence "north-home").existingClaim }}
+{{ include "nomad.pvc" (dict "root" . "volumeKey" "north-home" "component" "north-home") }}
+{{- end }}
+---
+{{- if not .Values.nomad.persistence.nomad.existingClaim }}
+{{ include "nomad.pvc" (dict "root" . "volumeKey" "nomad" "component" "nomad-data") }}
+{{- end }}
+{{- end }}

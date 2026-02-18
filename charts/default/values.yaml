@@ -32,7 +32,6 @@ nomad:
       staging_external: /nomad/staging
       public_external: /nomad/public
       north_home_external: /nomad/north/users
-      tmp: /nomad/tmp
       prefix_size: 1
       archive_version_suffix: []
       working_directory: /app
@@ -55,6 +54,7 @@ nomad:
 
     temporal:
       enabled: true
+      ui_enabled: true
       namespace: default
       graceful_shutdown_timeout: null
       processing_timeouts: {}
@@ -139,6 +139,35 @@ nomad:
     tag: v1.4.1
     pullPolicy: Always
 
+  persistence:
+    enabled: false
+    storageClass: ""
+    accessMode: ReadWriteMany
+
+    public:
+      size: 10Gi
+      storageClass: ""
+      accessMode: ""
+      existingClaim: ""
+
+    staging:
+      size: 10Gi
+      storageClass: ""
+      accessMode: ""
+      existingClaim: ""
+
+    north-home:
+      size: 1Gi
+      storageClass: ""
+      accessMode: ""
+      existingClaim: ""
+
+    nomad:
+      size: 10Gi
+      storageClass: ""
+      accessMode: ""
+      existingClaim: ""
+
   imagePullSecrets: []
 
   infrastructure:
@@ -148,10 +177,6 @@ nomad:
 
     # Elasticsearch settings (host defaults to elasticsearch-master if empty)
     elastic:
-      host: ""
-
-    # RabbitMQ (host defaults to {{ .Release.Name }}-rabbitmq if empty)
-    rabbitmq:
       host: ""
 
     # Logstash settings

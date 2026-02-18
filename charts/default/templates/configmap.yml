@@ -53,9 +53,19 @@ data:
 {{- if not $mongoHost }}
 {{- $mongoHost = printf "%s-mongodb" .Release.Name }}
 {{- end }}
+{{- if .Values.mongodb.auth.enabled }}
+{{- $mongoPass := .Values.mongodb.auth.rootPassword }}
+{{- if not $mongoPass }}
 {{- $secret := (lookup "v1" "Secret" .Release.Namespace (print .Release.Name "-mongodb")) }}
 {{- if $secret }}
-{{- $mongoHost = printf "mongodb://root:%s@%s" (index $secret.data "mongodb-root-password" | b64dec) $mongoHost }}
+{{- $mongoPass = (index $secret.data "mongodb-root-password" | b64dec) }}
+{{- end }}
+{{- end }}
+{{- if $mongoPass }}
+{{- $mongoHost = printf "mongodb://root:%s@%s" $mongoPass $mongoHost }}
+{{- else }}
+{{- $mongoHost = printf "mongodb://%s" $mongoHost }}
+{{- end }}
 {{- else }}
 {{- $mongoHost = printf "mongodb://%s" $mongoHost }}
 {{- end }}
@@ -82,13 +92,6 @@ data:
     "materials_index" (printf "%s_materials_v1" $dbname)
 }}
 {{- $_ := set $computed "elastic" $elastic }}
-
-{{- $rabbitmqHost := .Values.nomad.infrastructure.rabbitmq.host }}
-{{- if not $rabbitmqHost }}
-{{- $rabbitmqHost = printf "%s-rabbitmq" .Release.Name }}
-{{- end }}
-{{- $rabbitmq := dict "host" $rabbitmqHost }}
-{{- $_ := set $computed "rabbitmq" $rabbitmq }}
 
 {{- $logstashHost := .Values.nomad.infrastructure.logstash.host }}
 {{- if not $logstashHost }}

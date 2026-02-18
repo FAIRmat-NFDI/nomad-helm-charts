@@ -1,10 +1,12 @@
 mongodb:
   enabled: true
   image:
-    registry: docker.io
-    repository: bitnami/mongodb
+    repository: mongo
     tag: "8.2.5"
+    pullPolicy: IfNotPresent
   persistence:
+    enabled: false
+  auth:
     enabled: false
   resources:
     limits:
@@ -13,18 +15,6 @@ mongodb:
     requests:
       cpu: 250m
       memory: 512Mi
-  livenessProbe:
-    initialDelaySeconds: 60
-    periodSeconds: 30
-    timeoutSeconds: 30
-    failureThreshold: 10
-  readinessProbe:
-    initialDelaySeconds: 60
-    periodSeconds: 10
-    timeoutSeconds: 10
-    failureThreshold: 10
-  auth:
-    enabled: false
 
 elasticsearch:
   enabled: true
@@ -46,7 +36,7 @@ nomad:
 
   config:
     services:
-      api_host: localhost
+      api_host: nomad-oasis.local
       api_base_path: /nomad-oasis
       api_port: 80
       https: false
@@ -57,7 +47,6 @@ nomad:
       staging_external: /data/nomad/staging
       public_external: /data/nomad/public
       north_home_external: /data/nomad/north/users
-      tmp: /data/nomad/tmp
       prefix_size: 1
       nomad: /nomad
       working_directory: /app
@@ -145,7 +134,7 @@ nomad:
 
     oasis:
       is_oasis: true
-      uses_central_user_management: false
+      uses_central_user_management: true
 
   image:
     repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
@@ -191,11 +180,9 @@ nomad:
 
   infrastructure:
     mongo:
-      host: ""
+      host: "" # defaults to {{ .Release.Name }}-mongodb
     elastic:
-      host: ""
-    rabbitmq:
-      host: ""
+      host: "" # defaults to elasticsearch-master
     logstash:
       host: ""
 
@@ -244,6 +231,8 @@ temporal:
             user: "temporal"
             password: "temporal"
   worker:
+    # Temporal's internal system worker (for archival, batch ops) - not needed for NOMAD
+    # Disabled due to known SDK client timeout issue in Temporal helm chart 0.72.0
     replicaCount: 0
   schema:
     createDatabase:
@@ -291,7 +280,7 @@ jupyterhub:
     config:
       GenericOAuthenticator:
         client_id: nomad_public
-        oauth_callback_url: http://localhost/nomad-oasis/north/hub/oauth_callback
+        oauth_callback_url: http://nomad-oasis.local/nomad-oasis/north/hub/oauth_callback
         authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/auth
         token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
         userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
@@ -309,6 +298,7 @@ jupyterhub:
     image:
       name: jupyter/minimal-notebook
       tag: latest
+      pullPolicy: IfNotPresent
     cpu:
       limit: 1
       guarantee: 0.25
@@ -322,7 +312,7 @@ jupyterhub:
     enabled: true
     ingressClassName: nginx
     hosts:
-      - localhost
+      - nomad-oasis.local
     pathType: Prefix
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
