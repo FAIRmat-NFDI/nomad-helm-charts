@@ -19,7 +19,7 @@ data:
         ''      close;
     }
     {{- end }}
-    {{- if $config.temporal.enabled }}
+    {{- if $config.temporal.ui_enabled }}
     upstream temporal-web-backend {
         server {{ include "nomad.fullname" . }}-temporal-web:8080 max_conns=10;
         keepalive 32;
@@ -111,7 +111,7 @@ data:
         proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
       }
 
-      {{- if $config.temporal.enabled }}
+      {{- if $config.temporal.ui_enabled }}
       location {{ $apiBasePath }}/temporal/ {
         proxy_pass http://{{ include "nomad.fullname" . }}-temporal-web:8080;
         proxy_set_header Host $host;

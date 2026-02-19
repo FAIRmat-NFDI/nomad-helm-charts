@@ -22,11 +22,13 @@ metadata:
   labels:
     {{- include "nomad.labels" . | nindent 4 }}
   annotations:
+    {{- if ne .Values.nomad.ingress.className "alb" }}
     nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "{{ .Values.nomad.proxy.timeout }}"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "{{ .Values.nomad.proxy.timeout }}"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "{{ .Values.nomad.proxy.connectionTimeout }}"
     nginx.ingress.kubernetes.io/limit-connections: "{{ .Values.nomad.ingress.limitConnections }}"
+    {{- end }}
     {{- with .Values.nomad.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -49,6 +51,19 @@ spec:
       http:
         paths:
           - path: {{ $path }}
+            pathType: Prefix
+            backend:
+              {{- if semverCompare ">=1.19-0" $.Capabilities.KubeVersion.GitVersion }}
+              service:
+                name: {{ $fullName }}-proxy
+                port:
+                  number: {{ $svcPort }}
+              {{- else }}
+              serviceName: {{ $fullName }}-proxy
+              servicePort: {{ $svcPort }}
+              {{- end }}
+          {{- if eq .Values.nomad.ingress.className "alb" }}
+          - path: {{ $path }}/*
             pathType: ImplementationSpecific
             backend:
               {{- if semverCompare ">=1.19-0" $.Capabilities.KubeVersion.GitVersion }}
@@ -60,4 +75,5 @@ spec:
               serviceName: {{ $fullName }}-proxy
               servicePort: {{ $svcPort }}
               {{- end }}
+          {{- end }}
 {{- end }}

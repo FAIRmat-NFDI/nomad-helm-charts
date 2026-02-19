@@ -48,6 +48,7 @@ spec:
             periodSeconds: {{ .Values.mongodb.livenessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.mongodb.livenessProbe.timeoutSeconds }}
             failureThreshold: {{ .Values.mongodb.livenessProbe.failureThreshold }}
+            successThreshold: {{ .Values.mongodb.livenessProbe.successThreshold | default 1 }}
           readinessProbe:
             exec:
               command:
@@ -58,6 +59,7 @@ spec:
             periodSeconds: {{ .Values.mongodb.readinessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.mongodb.readinessProbe.timeoutSeconds }}
             failureThreshold: {{ .Values.mongodb.readinessProbe.failureThreshold }}
+            successThreshold: {{ .Values.mongodb.readinessProbe.successThreshold | default 1 }}
           {{- with .Values.mongodb.resources }}
           resources:
             {{- toYaml . | nindent 12 }}

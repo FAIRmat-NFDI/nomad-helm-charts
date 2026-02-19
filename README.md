@@ -18,9 +18,13 @@ Helm charts for deploying [NOMAD](https://nomad-lab.eu/) on Kubernetes.
 
 ```
 charts/
-  default/           # Standard NOMAD Oasis deployment (self-hosted)
-  GCP-oasis/       # Standard NOMAD Oasis deployment (GCP) [under development]
-helpers/             # Utility scripts (minikube/kind setup, diagnostics)
+  default/               # Standard NOMAD Oasis deployment (self-hosted)
+    custom-values/       # Ready-to-use values files for different environments
+      minikube.yaml      # Minikube local development
+      kind.yaml          # Kind local development
+      aws.yaml           # AWS EKS deployment
+  GCP-oasis/             # Standard NOMAD Oasis deployment (GCP) [under development]
+helpers/                 # Utility scripts (minikube/kind setup, diagnostics)
 ```
 
 ## Installation
@@ -48,7 +52,7 @@ nomad:
     enabled: true
 ```
 
-See [charts/default/values.yaml](charts/default/values.yaml) for all options, or use [oasis-minikube-values.yaml](charts/default/oasis-minikube-values.yaml) as a starting point.
+See [charts/default/values.yaml](charts/default/values.yaml) for all options, or use one of the [custom values files](charts/default/custom-values/) as a starting point.
 
 > **Quick Note:** By default, user authentication uses the central NOMAD Keycloak server. To configure your own identity provider, see the [Authentication section](charts/default/README.md#authentication-keycloak) in the chart documentation.
 
@@ -78,12 +82,17 @@ helm dependency update ./charts/default
 
 # Minikube
 helm install nomad-oasis ./charts/default \
-  -f ./charts/default/oasis-minikube-values.yaml \
+  -f ./charts/default/custom-values/minikube.yaml \
   --timeout 15m
 
 # Kind
 helm install nomad-oasis ./charts/default \
-  -f ./charts/default/oasis-kind-values.yaml \
+  -f ./charts/default/custom-values/kind.yaml \
+  --timeout 15m
+
+# AWS EKS
+helm install nomad-oasis ./charts/default \
+  -f ./charts/default/custom-values/aws.yaml \
   --timeout 15m
 
 # Watch k8s pods status

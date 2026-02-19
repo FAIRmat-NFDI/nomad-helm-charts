@@ -64,9 +64,9 @@ EOF
 # Step 3: Create host directories for nomad data
 echo ""
 echo "Step 3: Creating data directories..."
-mkdir -p /tmp/nomad-data/{public,staging,north/users,tmp}
+mkdir -p /tmp/nomad-data/{public,staging,north/users}
 mkdir -p /tmp/nomad-app
-docker exec "$CLUSTER_NAME-control-plane" mkdir -p /data/nomad/{public,staging,north/users,tmp}
+docker exec "$CLUSTER_NAME-control-plane" mkdir -p /data/nomad/{public,staging,north/users}
 docker exec "$CLUSTER_NAME-control-plane" chmod -R 777 /data/nomad
 docker exec "$CLUSTER_NAME-control-plane" mkdir -p /nomad
 docker exec "$CLUSTER_NAME-control-plane" chmod -R 777 /nomad
@@ -100,7 +100,7 @@ kubectl create secret generic nomad-hub-service-api-token \
 echo ""
 echo "Step 7: Installing NOMAD Oasis chart..."
 helm install "$RELEASE_NAME" . \
-  -f oasis-kind-values.yaml \
+  -f custom-values/kind.yaml \
   -n "$NAMESPACE" \
   --timeout 15m
 
