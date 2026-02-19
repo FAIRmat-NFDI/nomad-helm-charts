@@ -29,9 +29,9 @@ nomad:
       admin_user_id: ""
 
     fs:
-      staging_external: /nomad/staging
-      public_external: /nomad/public
-      north_home_external: /nomad/north/users
+      staging_external: /app/.volumes/fs/staging
+      public_external: /app/.volumes/fs/public
+      north_home_external: /app/.volumes/fs/north/users
       prefix_size: 1
       archive_version_suffix: []
       working_directory: /app
@@ -54,7 +54,7 @@ nomad:
 
     temporal:
       enabled: true
-      ui_enabled: true
+      ui_enabled: false
       namespace: default
       graceful_shutdown_timeout: null
       processing_timeouts: {}
@@ -189,7 +189,7 @@ nomad:
       existingSecret: ""
       key: "password"
       value: ""
-      autoGenerate: true
+      autoGenerate: false
 
     # Keycloak secrets
     keycloak:

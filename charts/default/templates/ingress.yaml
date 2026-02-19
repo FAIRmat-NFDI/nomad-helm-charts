@@ -62,4 +62,18 @@ spec:
               serviceName: {{ $fullName }}-proxy
               servicePort: {{ $svcPort }}
               {{- end }}
+          {{- if eq .Values.nomad.ingress.className "alb" }}
+          - path: {{ $path }}/*
+            pathType: ImplementationSpecific
+            backend:
+              {{- if semverCompare ">=1.19-0" $.Capabilities.KubeVersion.GitVersion }}
+              service:
+                name: {{ $fullName }}-proxy
+                port:
+                  number: {{ $svcPort }}
+              {{- else }}
+              serviceName: {{ $fullName }}-proxy
+              servicePort: {{ $svcPort }}
+              {{- end }}
+          {{- end }}
 {{- end }}

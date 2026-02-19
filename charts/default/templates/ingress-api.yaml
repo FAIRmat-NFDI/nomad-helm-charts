@@ -1,4 +1,4 @@
-{{- if .Values.nomad.ingress.enabled -}}
+{{- if and .Values.nomad.ingress.enabled (ne .Values.nomad.ingress.className "alb") -}}
 {{- $config := .Values.nomad.config -}}
 {{- $fullName := include "nomad.fullname" . -}}
 {{- $svcPort := .Values.nomad.service.port -}}
