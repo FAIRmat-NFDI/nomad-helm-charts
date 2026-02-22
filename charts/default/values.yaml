@@ -446,6 +446,8 @@ jupyterhub:
       type: ClusterIP
   singleuser:
     image:
+      name: ghcr.io/fairmat-nfdi/nomad-distro-template/jupyter
+      tag: "main"
       pullPolicy: Always
     storage:
       type: none
