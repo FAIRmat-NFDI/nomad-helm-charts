@@ -142,7 +142,7 @@ nomad:
   persistence:
     enabled: false
     storageClass: ""
-    accessMode: ReadWriteMany
+    accessMode: ReadWriteOnce
 
     public:
       size: 10Gi
@@ -163,6 +163,12 @@ nomad:
       existingClaim: ""
 
     nomad:
+      size: 10Gi
+      storageClass: ""
+      accessMode: ""
+      existingClaim: ""
+
+    tmp:
       size: 10Gi
       storageClass: ""
       accessMode: ""
@@ -237,8 +243,11 @@ nomad:
     service:
       type: ClusterIP
       port: 80
-    podSecurityContext: {}
-    securityContext: {}
+    podSecurityContext:
+      fsGroup: 1000
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
     resources:
       requests:
         memory: "64Mi"
@@ -266,8 +275,11 @@ nomad:
     service:
       type: ClusterIP
       port: 8000
-    podSecurityContext: {}
-    securityContext: {}
+    podSecurityContext:
+      fsGroup: 1000
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
     resources:
       requests:
         memory: "512Mi"
@@ -315,8 +327,11 @@ nomad:
                 - type: Percent
                   value: 25
                   periodSeconds: 600
-    podSecurityContext: {}
-    securityContext: {}
+    podSecurityContext:
+      fsGroup: 1000
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
     resources:
       requests:
         memory: "1Gi"
@@ -348,8 +363,11 @@ nomad:
     image:
       repository: ""
       tag: ""
-    podSecurityContext: {}
-    securityContext: {}
+    podSecurityContext:
+      fsGroup: 1000
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
     resources: {}
     volumes: []
     volumeMounts: []
@@ -376,8 +394,11 @@ nomad:
     image:
       repository: ""
       tag: ""
-    podSecurityContext: {}
-    securityContext: {}
+    podSecurityContext:
+      fsGroup: 1000
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
     resources: {}
     volumes: []
     volumeMounts: []
@@ -402,8 +423,11 @@ nomad:
   adminconsole:
     enabled: false
     replicaCount: 1
-    podSecurityContext: {}
-    securityContext: {}
+    podSecurityContext:
+      fsGroup: 1000
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
     resources: {}
     volumes: []
     volumeMounts: []
@@ -446,8 +470,6 @@ jupyterhub:
       type: ClusterIP
   singleuser:
     image:
-      name: ghcr.io/fairmat-nfdi/nomad-distro-template/jupyter
-      tag: "main"
       pullPolicy: Always
     storage:
       type: none

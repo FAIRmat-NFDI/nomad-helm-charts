@@ -14,4 +14,8 @@
 {{- if not .Values.nomad.persistence.nomad.existingClaim }}
 {{ include "nomad.pvc" (dict "root" . "volumeKey" "nomad" "component" "nomad-data") }}
 {{- end }}
+---
+{{- if not .Values.nomad.persistence.tmp.existingClaim }}
+{{ include "nomad.pvc" (dict "root" . "volumeKey" "tmp" "component" "tmp") }}
+{{- end }}
 {{- end }}
