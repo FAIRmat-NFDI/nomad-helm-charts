@@ -37,7 +37,7 @@ data:
 {{- $_ := set $computed "services" $services }}
 
 {{- $fs := dict
-    "tmp" ".volumes/fs/staging/tmp"
+    "tmp" ".volumes/fs/tmp"
     "staging_external" $config.fs.staging_external
     "public_external" $config.fs.public_external
     "north_home_external" $config.fs.north_home_external
