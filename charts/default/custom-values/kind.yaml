@@ -54,10 +54,9 @@ nomad:
       admin_user_id: ""
 
     fs:
-      staging_external: /data/nomad/staging
-      public_external: /data/nomad/public
-      north_home_external: /data/nomad/north/users
-      tmp: /data/nomad/tmp
+      staging_external: /app/.volumes/fs/staging
+      public_external: /app/.volumes/fs/public
+      north_home_external: /app/.volumes/fs/north/users
       prefix_size: 1
       nomad: /nomad
       working_directory: /app
@@ -193,8 +192,6 @@ nomad:
     mongo:
       host: ""
     elastic:
-      host: ""
-    rabbitmq:
       host: ""
     logstash:
       host: ""

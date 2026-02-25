@@ -113,9 +113,8 @@ spec:
               - bash
               - -c
               - ls /
-            initialDelaySeconds: {{ .Values.nomad.adminconsole.livenessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.nomad.adminconsole.livenessProbe.periodSeconds }}
-            timeoutSeconds: {{ .Values.nomad.adminconsole.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.nomad.adminconsole.livenessProbe.failureThreshold }}
+            successThreshold: {{ .Values.nomad.adminconsole.livenessProbe.successThreshold | default 1 }}
           readinessProbe:
             exec:
               command:
@@ -125,6 +124,8 @@ spec:
             initialDelaySeconds: {{ .Values.nomad.adminconsole.readinessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.nomad.adminconsole.readinessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.nomad.adminconsole.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.nomad.adminconsole.readinessProbe.failureThreshold }}
+            successThreshold: {{ .Values.nomad.adminconsole.readinessProbe.successThreshold | default 1 }}
       volumes:
       {{- with .Values.nomad.volumes }}
         {{- toYaml . | nindent 8 }}
@@ -135,23 +136,15 @@ spec:
         - name: nomad-conf
           configMap:
             name: {{ include "nomad.fullname" . }}-configmap
-        - name: public-volume
-          hostPath:
-            path: {{ $config.fs.public_external }}
-            # type: Directory
+        {{- include "nomad.dataVolume" (dict "root" . "name" "public-volume" "volumeKey" "public" "hostPath" $config.fs.public_external) | nindent 8 }}
+        {{- if (eq .Values.nomad.worker.storage "memory") }}
         - name: staging-volume
-          {{ if (eq .Values.nomad.worker.storage "memory") }}
           emptyDir:
             medium: 'Memory'
-          {{ else }}
-          hostPath:
-            path: {{ $config.fs.staging_external }}
-            # type: Directory
-          {{ end }}
-        - name: nomad-volume
-          hostPath:
-            path: {{ $config.fs.nomad }}
-            # type: Directory
+        {{- else }}
+        {{- include "nomad.dataVolume" (dict "root" . "name" "staging-volume" "volumeKey" "staging" "hostPath" $config.fs.staging_external) | nindent 8 }}
+        {{- end }}
+        {{- include "nomad.dataVolume" (dict "root" . "name" "nomad-volume" "volumeKey" "nomad" "hostPath" $config.fs.nomad) | nindent 8 }}
 
       {{- with .Values.nomad.adminconsole.nodeSelector }}
       nodeSelector:

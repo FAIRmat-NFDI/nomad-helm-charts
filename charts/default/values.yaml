@@ -29,10 +29,9 @@ nomad:
       admin_user_id: ""
 
     fs:
-      staging_external: /nomad/staging
-      public_external: /nomad/public
-      north_home_external: /nomad/north/users
-      tmp: /nomad/tmp
+      staging_external: /app/.volumes/fs/staging
+      public_external: /app/.volumes/fs/public
+      north_home_external: /app/.volumes/fs/north/users
       prefix_size: 1
       archive_version_suffix: []
       working_directory: /app
@@ -55,6 +54,7 @@ nomad:
 
     temporal:
       enabled: true
+      ui_enabled: false
       namespace: default
       graceful_shutdown_timeout: null
       processing_timeouts: {}
@@ -139,6 +139,41 @@ nomad:
     tag: v1.4.1
     pullPolicy: Always
 
+  persistence:
+    enabled: false
+    storageClass: ""
+    accessMode: ReadWriteOnce
+
+    public:
+      size: 10Gi
+      storageClass: ""
+      accessMode: ""
+      existingClaim: ""
+
+    staging:
+      size: 10Gi
+      storageClass: ""
+      accessMode: ""
+      existingClaim: ""
+
+    north-home:
+      size: 1Gi
+      storageClass: ""
+      accessMode: ""
+      existingClaim: ""
+
+    nomad:
+      size: 10Gi
+      storageClass: ""
+      accessMode: ""
+      existingClaim: ""
+
+    tmp:
+      size: 10Gi
+      storageClass: ""
+      accessMode: ""
+      existingClaim: ""
+
   imagePullSecrets: []
 
   infrastructure:
@@ -148,10 +183,6 @@ nomad:
 
     # Elasticsearch settings (host defaults to elasticsearch-master if empty)
     elastic:
-      host: ""
-
-    # RabbitMQ (host defaults to {{ .Release.Name }}-rabbitmq if empty)
-    rabbitmq:
       host: ""
 
     # Logstash settings
@@ -164,7 +195,7 @@ nomad:
       existingSecret: ""
       key: "password"
       value: ""
-      autoGenerate: true
+      autoGenerate: false
 
     # Keycloak secrets
     keycloak:
@@ -212,8 +243,11 @@ nomad:
     service:
       type: ClusterIP
       port: 80
-    podSecurityContext: {}
-    securityContext: {}
+    podSecurityContext:
+      fsGroup: 1000
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
     resources:
       requests:
         memory: "64Mi"
@@ -241,8 +275,11 @@ nomad:
     service:
       type: ClusterIP
       port: 8000
-    podSecurityContext: {}
-    securityContext: {}
+    podSecurityContext:
+      fsGroup: 1000
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
     resources:
       requests:
         memory: "512Mi"
@@ -290,8 +327,11 @@ nomad:
                 - type: Percent
                   value: 25
                   periodSeconds: 600
-    podSecurityContext: {}
-    securityContext: {}
+    podSecurityContext:
+      fsGroup: 1000
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
     resources:
       requests:
         memory: "1Gi"
@@ -323,8 +363,11 @@ nomad:
     image:
       repository: ""
       tag: ""
-    podSecurityContext: {}
-    securityContext: {}
+    podSecurityContext:
+      fsGroup: 1000
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
     resources: {}
     volumes: []
     volumeMounts: []
@@ -351,8 +394,11 @@ nomad:
     image:
       repository: ""
       tag: ""
-    podSecurityContext: {}
-    securityContext: {}
+    podSecurityContext:
+      fsGroup: 1000
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
     resources: {}
     volumes: []
     volumeMounts: []
@@ -377,8 +423,11 @@ nomad:
   adminconsole:
     enabled: false
     replicaCount: 1
-    podSecurityContext: {}
-    securityContext: {}
+    podSecurityContext:
+      fsGroup: 1000
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
     resources: {}
     volumes: []
     volumeMounts: []

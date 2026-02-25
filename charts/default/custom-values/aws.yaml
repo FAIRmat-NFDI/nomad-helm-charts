@@ -1,0 +1,77 @@
+nomad:
+  config:
+    services:
+      api_host: your_ingress_controller_address.com
+      https: false
+
+  # NOMAD Main Persistence
+  persistence:
+    enabled: true
+    storageClass: "nomad-efs-sc" # Using EFS for shared access
+    accessMode: "ReadWriteMany"
+
+  # Ingress for AWS ALB
+  ingress:
+    enabled: true
+    className: "alb"
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+      alb.ingress.kubernetes.io/healthcheck-path: "/nomad-oasis/gui/"
+      alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
+      alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "10"
+      alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+      alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
+      alb.ingress.kubernetes.io/success-codes: "200-399"
+      alb.ingress.kubernetes.io/group.name: "nomad-oasis"
+      # alb.ingress.kubernetes.io/ssl-redirect: "443"
+      # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:region:account:certificate/xxx
+
+  # Proxy probes
+  proxy:
+    livenessProbe:
+      initialDelaySeconds: 60
+      periodSeconds: 15
+      failureThreshold: 80
+      timeoutSeconds: 30
+    readinessProbe:
+      initialDelaySeconds: 60
+      periodSeconds: 15
+      failureThreshold: 80
+      timeoutSeconds: 30
+
+  app:
+    livenessProbe:
+      initialDelaySeconds: 60
+      periodSeconds: 15
+      failureThreshold: 80
+      timeoutSeconds: 30
+    readinessProbe:
+      initialDelaySeconds: 60
+      periodSeconds: 15
+      failureThreshold: 80
+      timeoutSeconds: 30
+
+mongodb:
+  auth:
+    enabled: true
+    rootPassword: "password123"
+  persistence:
+    storageClass: "gp2"
+
+elasticsearch:
+  clusterHealthCheckParams: "wait_for_status=yellow&timeout=1s"
+  persistence:
+    enabled: true
+    storageClass: "gp2"
+  volumeClaimTemplate:
+    storageClassName: "gp2"
+    resources:
+      requests:
+        storage: 30Gi
+
+postgresql:
+  primary:
+    persistence:
+      storageClass: "gp2"

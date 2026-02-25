@@ -185,6 +185,120 @@ mongodb:
 > [!WARNING]
 > Disabling MongoDB authentication is not recommended for production. Even within a Kubernetes cluster, any pod in the same namespace can access an unauthenticated MongoDB instance.
 
+## Persistence / Storage
+
+With the default chart, all data volumes use `hostPath`, which mounts directories from the node's local filesystem. This works well for single-node setups (Minikube, Kind) but causes problems on multi-node clusters where pods can land on different nodes and see different or empty data.
+
+The chart supports configurable persistence: you can switch from `hostPath` to `PersistentVolumeClaim` (PVC) backed by any StorageClass. This is cloud-agnostic — you bring your own StorageClass (e.g., Amazon EFS, NFS, Ceph) and the chart creates the PVCs.
+
+### Volumes managed by this chart
+
+| Volume | Mount Path | Used By | Default hostPath |
+|--------|-----------|---------|-----------------|
+| `public` | `/app/.volumes/fs/public` | All components | `/nomad/public` |
+| `staging` | `/app/.volumes/fs/staging` | All components | `/nomad/staging` |
+| `north-home` | `/app/.volumes/fs/north/users` | App only | `/nomad/north/users` |
+| `nomad` | `/nomad` | All components | `/nomad` |
+
+### Enabling PVC-based persistence
+
+Set `nomad.persistence.enabled: true` and provide a StorageClass:
+
+```yaml
+nomad:
+  persistence:
+    enabled: true
+    storageClass: efs-sc          # your pre-created StorageClass
+    accessMode: ReadWriteMany     # required for multi-node access
+```
+
+This creates 4 PVCs (one per volume) and all deployments reference them instead of `hostPath`.
+
+### Per-volume configuration
+
+Each volume can be configured independently. Per-volume settings override the top-level defaults:
+
+```yaml
+nomad:
+  persistence:
+    enabled: true
+    storageClass: efs-sc        # default for all volumes
+    accessMode: ReadWriteMany   # default for all volumes
+
+    public:
+      size: 10Gi                # storage size for this volume
+      storageClass: ""          # empty = inherit top-level (efs-sc)
+      accessMode: ""            # empty = inherit top-level (ReadWriteMany)
+      existingClaim: ""         # non-empty = use this PVC, skip creation
+
+    staging:
+      size: 10Gi
+
+    north-home:
+      size: 1Gi
+
+    nomad:
+      size: 10Gi
+```
+
+**Resolution order:** per-volume value > top-level value > cluster default.
+
+### Using existing PVCs
+
+If you manage PVCs outside the chart (e.g., via Terraform or GitOps), point to them with `existingClaim`:
+
+```yaml
+nomad:
+  persistence:
+    enabled: true
+    public:
+      existingClaim: my-pre-provisioned-public-pvc
+    staging:
+      existingClaim: my-pre-provisioned-staging-pvc
+    north-home:
+      existingClaim: my-pre-provisioned-north-pvc
+    nomad:
+      existingClaim: my-pre-provisioned-nomad-pvc
+```
+
+When `existingClaim` is set, the chart references that PVC directly and does not create one.
+
+### Example: AWS EKS with EFS
+
+1. Create an EFS filesystem and install the [EFS CSI driver](https://docs.aws.amazon.com/eks/latest/userguide/efs-csi.html)
+2. Create a `StorageClass`:
+   ```yaml
+   apiVersion: storage.k8s.io/v1
+   kind: StorageClass
+   metadata:
+     name: efs-sc
+   provisioner: efs.csi.aws.com
+   parameters:
+     provisioningMode: efs-ap
+     fileSystemId: fs-0123456789abcdef
+     directoryPerms: "777"
+   ```
+3. Configure the chart:
+   ```yaml
+   nomad:
+     persistence:
+       enabled: true
+       storageClass: efs-sc
+   ```
+
+### Staging volume with in-memory storage
+
+The `worker.storage: "memory"` setting is preserved regardless of persistence. When set, the staging volume uses `emptyDir` with `medium: Memory` instead of a PVC:
+
+```yaml
+nomad:
+  worker:
+    storage: "memory"       # staging volume = emptyDir (RAM-backed)
+  persistence:
+    enabled: true           # other volumes still use PVCs
+    storageClass: efs-sc
+```
+
 ## Secrets Management
 
 The chart supports multiple methods for managing secrets:
@@ -256,7 +370,7 @@ helm secrets install nomad ./charts/default -f values.yaml -f secrets://secrets.
 
 ## Local Development
 
-This chart includes values files for local Kubernetes environments. Both produce an equivalent deployment.
+This chart includes ready-to-use values files in the [`custom-values/`](custom-values/) directory for different environments.
 
 ### Option A: Minikube
 
@@ -281,13 +395,13 @@ minikube start --cpus=6 --memory=12288
 minikube addons enable ingress
 
 # Create required directories
-minikube ssh -- 'sudo mkdir -p /data/nomad/{public,staging,tmp,north/users} && sudo chmod -R 777 /data/nomad'
+minikube ssh -- 'sudo mkdir -p /data/nomad/{public,staging,north/users} && sudo chmod -R 777 /data/nomad'
 minikube ssh -- 'sudo mkdir -p /nomad && sudo chmod -R 777 /nomad'
 
 # Update dependencies and install
 helm dependency update ./charts/default
 helm install nomad-oasis ./charts/default \
-  -f ./charts/default/oasis-minikube-values.yaml \
+  -f ./charts/default/custom-values/minikube.yaml \
   --timeout 15m
 ```
 
@@ -347,9 +461,9 @@ nodes:
 EOF
 
 # Create data directories
-mkdir -p /tmp/nomad-data/{public,staging,north/users,tmp}
+mkdir -p /tmp/nomad-data/{public,staging,north/users}
 mkdir -p /tmp/nomad-app
-docker exec nomad-oasis-control-plane mkdir -p /data/nomad/{public,staging,north/users,tmp}
+docker exec nomad-oasis-control-plane mkdir -p /data/nomad/{public,staging,north/users}
 docker exec nomad-oasis-control-plane chmod -R 777 /data/nomad
 docker exec nomad-oasis-control-plane mkdir -p /nomad
 docker exec nomad-oasis-control-plane chmod -R 777 /nomad
@@ -364,7 +478,7 @@ kubectl wait --namespace ingress-nginx \
 # Update dependencies and install
 helm dependency update ./charts/default
 helm install nomad-oasis ./charts/default \
-  -f ./charts/default/oasis-kind-values.yaml \
+  -f ./charts/default/custom-values/kind.yaml \
   --timeout 15m
 ```
 
@@ -399,8 +513,9 @@ helm uninstall nomad-oasis
 | File | Description |
 |------|-------------|
 | `values.yaml` | Chart defaults (all subcharts disabled) |
-| `oasis-minikube-values.yaml` | Minikube development with all services enabled |
-| `oasis-kind-values.yaml` | Kind development with all services enabled |
+| [`custom-values/minikube.yaml`](custom-values/minikube.yaml) | Minikube local development with all services enabled |
+| [`custom-values/kind.yaml`](custom-values/kind.yaml) | Kind local development with all services enabled |
+| [`custom-values/aws.yaml`](custom-values/aws.yaml) | AWS EKS with ALB ingress and EFS/EBS storage |
 
 ## Temporal Workflow Engine
 
