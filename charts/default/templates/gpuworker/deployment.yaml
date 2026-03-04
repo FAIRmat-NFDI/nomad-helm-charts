@@ -121,6 +121,7 @@ spec:
             periodSeconds: {{ .Values.nomad.gpuworker.livenessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.nomad.gpuworker.livenessProbe.timeoutSeconds }}
             failureThreshold: {{ .Values.nomad.gpuworker.livenessProbe.failureThreshold }}
+            successThreshold: {{ .Values.nomad.gpuworker.livenessProbe.successThreshold | default 1 }}
           readinessProbe:
             exec:
               command:
@@ -131,6 +132,7 @@ spec:
             periodSeconds: {{ .Values.nomad.gpuworker.readinessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.nomad.gpuworker.readinessProbe.timeoutSeconds }}
             failureThreshold: {{ .Values.nomad.gpuworker.readinessProbe.failureThreshold }}
+            successThreshold: {{ .Values.nomad.gpuworker.readinessProbe.successThreshold | default 1 }}
       volumes:
       {{- with .Values.nomad.volumes }}
         {{- toYaml . | nindent 8 }}
@@ -141,23 +143,15 @@ spec:
         - name: nomad-conf
           configMap:
             name: {{ include "nomad.fullname" . }}-configmap
-        - name: public-volume
-          hostPath:
-            path: {{ $config.fs.public_external }}
-            # type: Directory
+        {{- include "nomad.dataVolume" (dict "root" . "name" "public-volume" "volumeKey" "public" "hostPath" $config.fs.public_external) | nindent 8 }}
+        {{- if (eq .Values.nomad.worker.storage "memory") }}
         - name: staging-volume
-          {{ if (eq .Values.nomad.worker.storage "memory") }}
           emptyDir:
             medium: 'Memory'
-          {{ else }}
-          hostPath:
-            path: {{ $config.fs.staging_external }}
-            # type: Directory
-          {{ end }}
-        - name: nomad-volume
-          hostPath:
-            path: {{ $config.fs.nomad }}
-            # type: Directory
+        {{- else }}
+        {{- include "nomad.dataVolume" (dict "root" . "name" "staging-volume" "volumeKey" "staging" "hostPath" $config.fs.staging_external) | nindent 8 }}
+        {{- end }}
+        {{- include "nomad.dataVolume" (dict "root" . "name" "nomad-volume" "volumeKey" "nomad" "hostPath" $config.fs.nomad) | nindent 8 }}
 
       {{- with .Values.nomad.gpuworker.nodeSelector }}
       nodeSelector:

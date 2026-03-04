@@ -66,6 +66,8 @@ spec:
             initialDelaySeconds: {{ .Values.nomad.proxy.livenessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.nomad.proxy.livenessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.nomad.proxy.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.nomad.proxy.livenessProbe.failureThreshold | default 3 }}
+            successThreshold: {{ .Values.nomad.proxy.livenessProbe.successThreshold | default 1 }}
           readinessProbe:
             httpGet:
               path: "{{ $config.services.api_base_path }}/gui/index.html"
@@ -73,6 +75,8 @@ spec:
             initialDelaySeconds: {{ .Values.nomad.proxy.readinessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.nomad.proxy.readinessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.nomad.proxy.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.nomad.proxy.readinessProbe.failureThreshold | default 3 }}
+            successThreshold: {{ .Values.nomad.proxy.readinessProbe.successThreshold | default 1 }}
           {{- with .Values.nomad.proxy.resources }}
           resources:
             {{- . | toYaml | nindent 12 }}
