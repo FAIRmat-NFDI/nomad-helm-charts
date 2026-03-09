@@ -1,0 +1,84 @@
+# TLS overlay for nginx-based ingress controllers with cert-manager
+# visit https://cert-manager.io/docs/configuration/acme/
+#
+# This file is an overlay — apply it on top of an existing environment values file:
+#
+#   helm install nomad-oasis ./charts/default \
+#     -f ./charts/default/custom-values/kind.yaml \
+#     -f ./charts/default/custom-values/tls.yaml
+#
+# Prerequisites:
+#   1. cert-manager installed in the cluster:
+#        helm repo add jetstack https://charts.jetstack.io
+#        helm install cert-manager jetstack/cert-manager \
+#          -n cert-manager --create-namespace \
+#          --set crds.enabled=true
+#
+#   2. A ClusterIssuer resource pointing to your CA of choice.
+#      See the examples below and apply one with: kubectl apply -f issuer.yaml
+#
+# cert-manager is controller-agnostic: works with nginx, Traefik, Contour, or any
+# ingress controller that supports the standard Kubernetes Ingress resource.
+#
+# ─── ClusterIssuer examples ────────────────────────────────────────────────────
+#
+# Let's Encrypt (production) — requires a publicly resolvable domain:
+#
+#   apiVersion: cert-manager.io/v1
+#   kind: ClusterIssuer
+#   metadata:
+#     name: letsencrypt-prod
+#   spec:
+#     acme:
+#       server: https://acme-v02.api.letsencrypt.org/directory
+#       email: your@email.com
+#       privateKeySecretRef:
+#         name: letsencrypt-prod
+#       solvers:
+#         - http01:
+#             ingress:
+#               ingressClassName: nginx   # match your ingress controller class
+#
+# Self-signed (local/dev, no public domain needed):
+#
+#   apiVersion: cert-manager.io/v1
+#   kind: ClusterIssuer
+#   metadata:
+#     name: selfsigned-issuer
+#   spec:
+#     selfSigned: {}
+#
+
+nomad:
+  config:
+    services:
+      # Must be set to true when TLS is active so NOMAD generates https:// URLs
+      https: true
+
+  ingress:
+    annotations:
+      # Redirect plain HTTP to HTTPS
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+    # cert-manager will provision and auto-renew the certificate.
+    # The TLS secret is named <release-name>-tls and created automatically.
+    certManager:
+      enabled: true
+      issuerName: letsencrypt-prod   # Change to your ClusterIssuer or Issuer name
+      issuerKind: ClusterIssuer      # ClusterIssuer (cluster-wide) or Issuer (namespace-scoped)
+
+jupyterhub:
+  hub:
+    config:
+      GenericOAuthenticator:
+        # Update the OAuth callback URL to use https when TLS is active
+        oauth_callback_url: https://your-domain.com/nomad-oasis/north/hub/oauth_callback
+    extraEnv:
+      NOMAD_OASIS_URL: "https://your-domain.com/nomad-oasis"
+  ingress:
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    tls:
+      - hosts:
+          - your-domain.com
+        secretName: nomad-oasis-jupyterhub-tls

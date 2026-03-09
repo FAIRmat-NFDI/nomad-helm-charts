@@ -2,11 +2,21 @@
 
 Ready-to-use Helm values files for deploying NOMAD Oasis on different environments.
 
-| File | Environment | Ingress | Storage |
-|------|-------------|---------|---------|
-| [minikube.yaml](minikube.yaml) | Local (Minikube) | nginx | hostPath |
-| [kind.yaml](kind.yaml) | Local (Kind) | nginx | hostPath |
-| [aws.yaml](aws.yaml) | AWS EKS | ALB | EFS + EBS |
+| File | Environment | Ingress | Storage | TLS |
+|------|-------------|---------|---------|-----|
+| [minikube.yaml](minikube.yaml) | Local (Minikube) | nginx | hostPath | No |
+| [kind.yaml](kind.yaml) | Local (Kind) | nginx | hostPath | No |
+| [aws.yaml](aws.yaml) | AWS EKS | ALB | EFS + EBS | ACM (AWS-managed) |
+| [tls.yaml](tls.yaml) | Any (overlay) | any | — | cert-manager |
+
+The `tls.yaml` file is an **overlay** that adds TLS on top of any environment:
+
+```bash
+# Example: Kind + TLS
+helm install nomad-oasis ./charts/default \
+  -f ./charts/default/custom-values/kind.yaml \
+  -f ./charts/default/custom-values/tls.yaml
+```
 
 ## Local Development
 
@@ -114,7 +124,7 @@ helm upgrade nomad-oasis ./charts/default -f my-aws-values.yaml
 
 ### Enabling HTTPS
 
-To enable HTTPS with an ACM certificate, uncomment and configure these annotations in your values file:
+The `aws.yaml` file has HTTPS pre-configured using AWS ACM (the recommended approach for AWS). Update the `certificate-arn` annotation and set `https: true`:
 
 ```yaml
 nomad:
@@ -123,7 +133,9 @@ nomad:
       https: true
   ingress:
     annotations:
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80},{"HTTPS": 443}]'
       alb.ingress.kubernetes.io/ssl-redirect: "443"
       alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:<region>:<account>:certificate/<id>
 ```
+
+ACM handles certificate provisioning and renewal automatically — no cert-manager needed on AWS.

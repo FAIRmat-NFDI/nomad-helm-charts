@@ -453,7 +453,24 @@ nomad:
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
       nginx.ingress.kubernetes.io/proxy-body-size: 32g
+    # TLS configuration. Either provide pre-existing TLS secrets or use cert-manager below.
+    # Standard Kubernetes ingress TLS format; also used when certManager.enabled is false.
+    # Example:
+    #   tls:
+    #     - hosts:
+    #         - your-domain.com
+    #       secretName: nomad-oasis-tls
     tls: []
+    # cert-manager integration: automatically provision and renew TLS certificates.
+    # Requires cert-manager to be installed in the cluster.
+    # Works with any ingress controller (nginx, Traefik, Contour, etc.).
+    # When enabled, a TLS entry is auto-generated from nomad.config.services.api_host
+    # (unless nomad.ingress.tls is already set manually).
+    # Remember to also set nomad.config.services.https: true.
+    certManager:
+      enabled: false
+      issuerName: ""        # Name of the cert-manager Issuer or ClusterIssuer resource
+      issuerKind: ClusterIssuer  # ClusterIssuer (cluster-wide) or Issuer (namespace-scoped)
 
   volumes: []
   volumeMounts: []

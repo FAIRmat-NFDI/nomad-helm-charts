@@ -22,8 +22,8 @@ charts/
     custom-values/       # Ready-to-use values files for different environments
       minikube.yaml      # Minikube local development
       kind.yaml          # Kind local development
-      aws.yaml           # AWS EKS deployment
-  GCP-oasis/             # Standard NOMAD Oasis deployment (GCP) [under development]
+      aws.yaml           # AWS EKS deployment (includes HTTPS via ACM)
+      tls.yaml           # TLS overlay for any environment (cert-manager)
 helpers/                 # Utility scripts (minikube/kind setup, diagnostics)
 ```
 
@@ -55,7 +55,6 @@ nomad:
 See [charts/default/values.yaml](charts/default/values.yaml) for all options, or use one of the [custom values files](charts/default/custom-values/) as a starting point.
 
 > **Quick Note:** By default, user authentication uses the central NOMAD Keycloak server. To configure your own identity provider, see the [Authentication section](charts/default/README.md#authentication-keycloak) in the chart documentation.
-
 
 ### From Source
 
@@ -103,17 +102,17 @@ kubectl get pods -w
 
 All configuration lives under the `nomad` key in your values file. See [`charts/default/values.yaml`](charts/default/values.yaml) for all available options.
 
-| Key | Purpose |
-|-----|---------|
-| `nomad.config` | NOMAD application settings (written to `/app/nomad.yaml`) |
-| `nomad.image` | Container image repository and tag |
-| `nomad.proxy`, `nomad.app`, `nomad.worker` | Replica counts, resources, timeouts |
-| `nomad.secrets` | API, Keycloak, and other secrets |
-| `nomad.infrastructure` | Service host overrides (auto-detected by default) |
+| Key                                        | Purpose                                                    |
+| ------------------------------------------ | ---------------------------------------------------------- |
+| `nomad.config`                             | NOMAD application settings (written to `/app/nomad.yaml`)  |
+| `nomad.image`                              | Container image repository and tag                         |
+| `nomad.proxy`, `nomad.app`, `nomad.worker` | Replica counts, resources, timeouts                        |
+| `nomad.ingress`                            | Ingress class, annotations, TLS, and cert-manager settings |
+| `nomad.secrets`                            | API, Keycloak, and other secrets                           |
+| `nomad.infrastructure`                     | Service host overrides (auto-detected by default)          |
 
 > [!TIP]
 > To access the latest features and improvements, we recommend updating the `nomad.image.tag` to the latest stable version. You can find the available tags in the [GitLab Registry](https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-FAIR/-/container_registry).
-
 
 ### Secrets
 
@@ -129,10 +128,38 @@ nomad:
 
 See the [default chart README](charts/default/README.md) for all six supported secret management methods.
 
+### TLS / HTTPS
+
+Two paths depending on your environment:
+
+**AWS (ALB + ACM)** — certificates are managed by AWS; no extra tooling needed. Configure the ACM certificate ARN in the ingress annotations and set `https: true`:
+
+```yaml
+nomad:
+  config:
+    services:
+      https: true
+  ingress:
+    annotations:
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80},{"HTTPS": 443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: "443"
+      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:<region>:<account>:certificate/<id>
+```
+
+**Any other environment (cert-manager)** — install [cert-manager](https://cert-manager.io/docs/installation/helm/) once per cluster, create a `ClusterIssuer` (e.g. Let's Encrypt), then layer [`custom-values/tls.yaml`](charts/default/custom-values/tls.yaml) on top of your environment values:
+
+```bash
+helm install nomad-oasis ./charts/default \
+  -f ./charts/default/custom-values/kind.yaml \
+  -f ./charts/default/custom-values/tls.yaml
+```
+
+cert-manager is **controller-agnostic** — it works with nginx, Traefik, Contour, or any ingress controller that supports the standard Kubernetes Ingress resource. See [`custom-values/tls.yaml`](charts/default/custom-values/tls.yaml) for ClusterIssuer examples (Let's Encrypt and self-signed).
+
 ## Charts
 
-| Chart | Description |
-|-------|-------------|
+| Chart                        | Description                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------- |
 | [`default`](charts/default/) | Standard self-hosted NOMAD Oasis with Elasticsearch, MongoDB, Temporal, and optional JupyterHub (NORTH) |
 
 ## Bundled Dependencies
@@ -147,12 +174,12 @@ The `default` chart includes these subcharts (all disabled by default, enable as
 
 ## Helper Scripts
 
-| Script | Description |
-|--------|-------------|
-| [`minikube-setup.sh`](helpers/minikube-setup.sh) | Automated Minikube environment setup and chart installation |
-| [`kind-setup.sh`](helpers/kind-setup.sh) | Automated Kind environment setup and chart installation |
-| [`check-status.sh`](helpers/check-status.sh) | Deployment health diagnostics |
-| [`dev-utils.sh`](helpers/dev-utils.sh) | Shell aliases for development (`source helpers/dev-utils.sh`) |
+| Script                                           | Description                                                   |
+| ------------------------------------------------ | ------------------------------------------------------------- |
+| [`minikube-setup.sh`](helpers/minikube-setup.sh) | Automated Minikube environment setup and chart installation   |
+| [`kind-setup.sh`](helpers/kind-setup.sh)         | Automated Kind environment setup and chart installation       |
+| [`check-status.sh`](helpers/check-status.sh)     | Deployment health diagnostics                                 |
+| [`dev-utils.sh`](helpers/dev-utils.sh)           | Shell aliases for development (`source helpers/dev-utils.sh`) |
 
 ## Further Documentation
 

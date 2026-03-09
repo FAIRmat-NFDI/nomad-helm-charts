@@ -2,6 +2,7 @@ nomad:
   config:
     services:
       api_host: your_ingress_controller_address.com
+      # Set to true when HTTPS is enabled below (either via ACM or cert-manager)
       https: false
 
   # NOMAD Main Persistence
@@ -11,13 +12,20 @@ nomad:
     accessMode: "ReadWriteMany"
 
   # Ingress for AWS ALB
+  # For HTTPS with ACM (recommended for AWS), uncomment the ssl-redirect and certificate-arn
+  # annotations below and set https: true above. No cert-manager needed — ACM handles the cert.
+  #
+  # For HTTPS with cert-manager instead of ACM (e.g. you manage your own certs), switch to
+  # a non-ALB ingress controller and see custom-values/tls.yaml.
   ingress:
     enabled: true
     className: "alb"
     annotations:
       alb.ingress.kubernetes.io/scheme: internet-facing
       alb.ingress.kubernetes.io/target-type: ip
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80},{"HTTPS": 443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: "443"
+      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:region:account:certificate/xxx  # Replace with your ACM certificate ARN
       alb.ingress.kubernetes.io/healthcheck-path: "/nomad-oasis/gui/"
       alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
       alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "10"
@@ -25,8 +33,6 @@ nomad:
       alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
       alb.ingress.kubernetes.io/success-codes: "200-399"
       alb.ingress.kubernetes.io/group.name: "nomad-oasis"
-      # alb.ingress.kubernetes.io/ssl-redirect: "443"
-      # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:region:account:certificate/xxx
 
   # Proxy probes
   proxy:
