@@ -4,17 +4,41 @@ Ready-to-use Helm values files for deploying NOMAD Oasis on different environmen
 
 | File                           | Environment      | Ingress | Storage   | TLS               |
 | ------------------------------ | ---------------- | ------- | --------- | ----------------- |
-| [minikube.yaml](minikube.yaml) | Local (Minikube) | nginx   | hostPath  | No                |
-| [kind.yaml](kind.yaml)         | Local (Kind)     | nginx   | hostPath  | No                |
+| [minikube.yaml](minikube.yaml) | Local (Minikube) | nginx   | hostPath  | cert-manager      |
+| [kind.yaml](kind.yaml)         | Local (Kind)     | nginx   | hostPath  | cert-manager      |
 | [aws.yaml](aws.yaml)           | AWS EKS          | ALB     | EFS + EBS | ACM (AWS-managed) |
-| [tls.yaml](tls.yaml)           | Any (overlay)    | any     | —         | cert-manager      |
+| [tls.yaml](tls.yaml)           | Self-hosted overlay | any  | —         | cert-manager      |
 
-## TLS with cert-manager
+---
 
-The `tls.yaml` file is a Helm values **overlay** — it configures NOMAD to use cert-manager for TLS.
-cert-manager itself is a separate cluster-level tool that must be set up before deploying NOMAD.
+## Self-Hosted
 
-### Step 1 — Install cert-manager (once per cluster)
+Covers local development (Kind, Minikube) and on-premises Kubernetes clusters. Uses an nginx ingress controller. TLS is handled by cert-manager — no cloud account required.
+
+### Quick Start (local)
+
+```bash
+# Minikube (automated)
+./helpers/minikube-setup.sh
+
+# Kind (automated)
+./helpers/kind-setup.sh
+```
+
+Or install manually:
+
+```bash
+helm dependency update ./charts/default
+helm install nomad-oasis ./charts/default \
+  -f ./charts/default/custom-values/kind.yaml \
+  --timeout 15m
+```
+
+### Enabling TLS (cert-manager)
+
+cert-manager is a cluster-level tool that provisions and renews TLS certificates automatically. It works with any ingress controller (nginx, Traefik, Contour, etc.) and is the recommended TLS solution for self-hosted deployments.
+
+#### Step 1 — Install cert-manager (once per cluster)
 
 ```bash
 helm repo add jetstack https://charts.jetstack.io
@@ -29,7 +53,7 @@ kubectl wait --namespace cert-manager \
   --timeout=90s
 ```
 
-### Step 2 — Apply a ClusterIssuer (once per cluster)
+#### Step 2 — Apply a ClusterIssuer (once per cluster)
 
 Two ready-to-use issuer files are provided in [`tls-issuer/`](tls-issuer/):
 
@@ -48,7 +72,7 @@ kubectl apply -f ./charts/default/custom-values/tls-issuer/selfsigned.yaml
 
 > **Before applying `letsencrypt.yaml`**: edit the file and replace `your@email.com` with your email address and update `ingressClassName` to match your ingress controller.
 
-### Step 3 — Deploy NOMAD with TLS
+#### Step 3 — Deploy NOMAD with TLS
 
 ```bash
 helm dependency update ./charts/default
@@ -60,43 +84,25 @@ helm install nomad-oasis ./charts/default \
 
 > Update `nomad.ingress.certManager.issuerName` in `tls.yaml` to match the issuer you applied in Step 2 (`letsencrypt-prod` or `selfsigned-issuer`).
 
-## Local Development
+---
 
-For Minikube or Kind, use the automated setup scripts:
+## Cloud-Hosted (AWS EKS)
 
-```bash
-# Minikube
-./helpers/minikube-setup.sh
-
-# Kind
-./helpers/kind-setup.sh
-```
-
-Or install manually:
-
-```bash
-helm dependency update ./charts/default
-helm install nomad-oasis ./charts/default \
-  -f ./charts/default/custom-values/minikube.yaml \
-  --timeout 15m
-```
-
-## AWS EKS Deployment
+Uses the AWS Load Balancer Controller to provision an Application Load Balancer (ALB) as the ingress. TLS is handled by AWS Certificate Manager (ACM) — **cert-manager is not required**.
 
 ### Prerequisites
 
-Before using `aws.yaml`, you must have the following infrastructure in place:
+Before using `aws.yaml`, the following infrastructure must be in place:
 
-1. **EKS Cluster** running with `kubectl` access configured
+1. **EKS Cluster** with `kubectl` access configured
 
    ```bash
    aws eks update-kubeconfig --region <region> --name <cluster-name>
    ```
 
-2. **AWS Load Balancer Controller** installed in the cluster (for ALB ingress)
+2. **AWS Load Balancer Controller** installed in the cluster
 
    ```bash
-   # Install via Helm
    helm repo add eks https://aws.github.io/eks-charts
    helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
      -n kube-system \
@@ -110,7 +116,6 @@ Before using `aws.yaml`, you must have the following infrastructure in place:
 3. **EFS filesystem** with the [EFS CSI driver](https://docs.aws.amazon.com/eks/latest/userguide/efs-csi.html) installed
 
    ```bash
-   # Install EFS CSI driver
    helm repo add aws-efs-csi-driver https://kubernetes-sigs.github.io/aws-efs-csi-driver/
    helm install aws-efs-csi-driver aws-efs-csi-driver/aws-efs-csi-driver -n kube-system
    ```
@@ -129,11 +134,11 @@ Before using `aws.yaml`, you must have the following infrastructure in place:
      directoryPerms: "777"
    ```
 
-4. **EBS gp2 StorageClass** (usually available by default on EKS) for MongoDB, Elasticsearch, and PostgreSQL block storage
+4. **EBS gp2 StorageClass** (available by default on EKS) for MongoDB, Elasticsearch, and PostgreSQL
 
 5. **Security groups** allowing:
    - EFS: NFS traffic (port 2049) between EKS nodes and EFS mount targets
-   - ALB: Inbound HTTP (80) and/or HTTPS (443) from the internet
+   - ALB: Inbound HTTP (80) and HTTPS (443) from the internet
    - EKS nodes: All traffic within the cluster security group
 
 ### Configuration
@@ -146,9 +151,9 @@ cp charts/default/custom-values/aws.yaml my-aws-values.yaml
 
 Update the following fields:
 
-- `nomad.config.services.api_host` -- Set to your ALB DNS name (available after first deploy) or a custom domain
-- `mongodb.auth.rootPassword` -- Change to a secure password
-- Uncomment the SSL annotations if you have an ACM certificate for HTTPS
+- `nomad.config.services.api_host` — your domain name or ALB DNS name (available after first deploy)
+- `mongodb.auth.rootPassword` — change to a secure password
+- `alb.ingress.kubernetes.io/certificate-arn` — replace the placeholder ARN with your ACM certificate ARN (appears in both the NOMAD and JupyterHub ingress sections)
 
 ### Install
 
@@ -165,7 +170,7 @@ After the ALB is provisioned, get its DNS name:
 kubectl get ingress nomad-oasis -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 ```
 
-Update `api_host` in your values file with this hostname and run `helm upgrade`:
+Create a DNS CNAME record pointing your domain to this hostname, then update `api_host` and run `helm upgrade`:
 
 ```bash
 helm upgrade nomad-oasis ./charts/default -f my-aws-values.yaml
@@ -173,18 +178,25 @@ helm upgrade nomad-oasis ./charts/default -f my-aws-values.yaml
 
 ### Enabling HTTPS
 
-The `aws.yaml` file has HTTPS pre-configured using AWS ACM (the recommended approach for AWS). Update the `certificate-arn` annotation and set `https: true`:
+`aws.yaml` is pre-configured for HTTPS via ACM. To enable it:
+
+1. Replace both `certificate-arn` placeholders (NOMAD and JupyterHub ingress sections) with your ACM certificate ARN.
+2. Set `https: true` under `nomad.config.services`.
+3. Update the JupyterHub OAuth callback URL scheme from `http://` to `https://`:
 
 ```yaml
 nomad:
   config:
     services:
       https: true
-  ingress:
-    annotations:
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80},{"HTTPS": 443}]'
-      alb.ingress.kubernetes.io/ssl-redirect: "443"
-      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:<region>:<account>:certificate/<id>
+
+jupyterhub:
+  hub:
+    config:
+      GenericOAuthenticator:
+        oauth_callback_url: https://your-domain.com/nomad-oasis/north/hub/oauth_callback
 ```
 
-ACM handles certificate provisioning and renewal automatically — no cert-manager needed on AWS.
+ACM handles certificate provisioning and renewal automatically — no cert-manager needed.
+
+> **Note:** Both the NOMAD and JupyterHub ingresses share the same ALB via `group.name: "nomad-oasis"`, so one ACM certificate covers both. Use a wildcard cert (`*.your-domain.com`) or a cert with both hostnames as SANs if they are on different subdomains.

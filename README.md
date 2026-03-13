@@ -130,23 +130,7 @@ See the [default chart README](charts/default/README.md) for all six supported s
 
 ### TLS / HTTPS
 
-Two paths depending on your environment:
-
-**AWS (ALB + ACM)** — certificates are managed by AWS; no extra tooling needed. Configure the ACM certificate ARN in the ingress annotations and set `https: true`:
-
-```yaml
-nomad:
-  config:
-    services:
-      https: true
-  ingress:
-    annotations:
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80},{"HTTPS": 443}]'
-      alb.ingress.kubernetes.io/ssl-redirect: "443"
-      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:<region>:<account>:certificate/<id>
-```
-
-**Any other environment (cert-manager)** — install [cert-manager](https://cert-manager.io/docs/installation/helm/) once per cluster, create a `ClusterIssuer` (e.g. Let's Encrypt), then layer [`custom-values/tls.yaml`](charts/default/custom-values/tls.yaml) on top of your environment values:
+**cert-manager (recommended for any environment)** — install [cert-manager](https://cert-manager.io/docs/installation/helm/) once per cluster, create a `ClusterIssuer` (e.g. Let's Encrypt or self-signed), then layer [`custom-values/tls.yaml`](charts/default/custom-values/tls.yaml) on top of your environment values:
 
 ```bash
 helm install nomad-oasis ./charts/default \
@@ -154,7 +138,9 @@ helm install nomad-oasis ./charts/default \
   -f ./charts/default/custom-values/tls.yaml
 ```
 
-cert-manager is **controller-agnostic** — it works with nginx, Traefik, Contour, or any ingress controller that supports the standard Kubernetes Ingress resource. See [`custom-values/tls.yaml`](charts/default/custom-values/tls.yaml) for ClusterIssuer examples (Let's Encrypt and self-signed).
+cert-manager is **controller-agnostic** — it works with nginx, Traefik, Contour, or any ingress controller. On AWS, use the Route53 DNS-01 solver instead of HTTP-01 for private clusters. See [`custom-values/tls.yaml`](charts/default/custom-values/tls.yaml) and [`custom-values/tls-issuer/`](charts/default/custom-values/tls-issuer/) for ready-to-use ClusterIssuer examples.
+
+**AWS (ALB + ACM)** — certificates are managed by AWS; no cert-manager needed. Replace the `certificate-arn` placeholder in `aws.yaml` with your ACM certificate ARN and set `https: true`. Both NOMAD and JupyterHub ingresses share the same ALB, so one certificate covers both. See the [AWS EKS Deployment](charts/default/custom-values/README.md#aws-eks-deployment) guide for details.
 
 ## Charts
 

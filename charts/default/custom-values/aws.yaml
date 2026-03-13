@@ -59,6 +59,23 @@ nomad:
       failureThreshold: 80
       timeoutSeconds: 30
 
+jupyterhub:
+  hub:
+    config:
+      GenericOAuthenticator:
+        # Update scheme to https:// when HTTPS is enabled
+        oauth_callback_url: http://your_ingress_controller_address.com/nomad-oasis/north/hub/oauth_callback
+  ingress:
+    enabled: true
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/group.name: "nomad-oasis"  # shares the same ALB as NOMAD
+      alb.ingress.kubernetes.io/healthcheck-path: "/nomad-oasis/north/hub/health"
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80},{"HTTPS": 443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: "443"
+      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:region:account:certificate/xxx  # Same cert as NOMAD above
+
 mongodb:
   auth:
     enabled: true
