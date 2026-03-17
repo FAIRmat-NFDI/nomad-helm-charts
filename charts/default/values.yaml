@@ -254,8 +254,17 @@ nomad:
         cpu: "50m"
       limits:
         memory: "128Mi"
-    volumes: []
-    volumeMounts: []
+    # emptyDir overlays for nginx directories that require write access when running as non-root
+    volumes:
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
+    volumeMounts:
+      - name: nginx-cache
+        mountPath: /var/cache/nginx
+      - name: nginx-run
+        mountPath: /var/run
     nodeSelector: {}
     tolerations: []
     affinity: {}
@@ -291,6 +300,7 @@ nomad:
     nodeSelector: {}
     tolerations: []
     affinity: {}
+    hostAliases: []
     podAnnotations: {}
     podLabels: {}
     livenessProbe:
@@ -308,6 +318,7 @@ nomad:
     processes: null
     maxTasksPerChild: 128
     storage: null # "memory" or "disk"
+    hostAliases: []
     autoscaling:
       enabled: false
       minReplicas: 1
@@ -749,4 +760,7 @@ postgresql:
           CREATE DATABASE "temporal_visibility";
 
 keda:
+  enabled: false
+
+keycloak:
   enabled: false

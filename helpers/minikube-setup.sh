@@ -4,9 +4,23 @@
 # This script provides a clean, reproducible environment for testing the NOMAD Helm chart.
 # Run from the repository root.
 #
-# Usage: ./helpers/minikube-setup.sh
+# Usage: ./helpers/minikube-setup.sh [--local-keycloak]
+#
+# Flags:
+#   --local-keycloak   Deploy Keycloak inside minikube instead of using the central NOMAD
+#                      Keycloak. After deployment, create the 'nomad' realm and 'nomad_public'
+#                      client at http://nomad-oasis.local/auth/admin (admin / admin).
 
 set -euo pipefail
+
+# Parse flags
+LOCAL_KEYCLOAK=false
+for arg in "$@"; do
+  case "$arg" in
+    --local-keycloak) LOCAL_KEYCLOAK=true ;;
+    *) echo "Unknown argument: $arg"; exit 1 ;;
+  esac
+done
 
 # Check prerequisites
 for cmd in docker minikube helm kubectl; do
@@ -32,6 +46,7 @@ HOSTNAME="${HOSTNAME:-nomad-oasis.local}"
 echo "=== NOMAD Oasis Minikube Setup ==="
 echo "CPUs: $MINIKUBE_CPUS, Memory: ${MINIKUBE_MEMORY}MB, Disk: $MINIKUBE_DISK"
 echo "Namespace: $NAMESPACE, Hostname: $HOSTNAME"
+echo "Local Keycloak: $LOCAL_KEYCLOAK"
 
 # Step 1: Clean up any existing minikube
 echo ""
@@ -54,11 +69,16 @@ minikube addons enable ingress
 minikube addons enable storage-provisioner
 
 # Step 4: Create host directories for nomad data
+# These match the default hostPath volumes in values.yaml (fs.staging_external,
+# fs.public_external, fs.north_home_external). Pre-creating them with UID 1000
+# (the nomad user) avoids a PermissionError on first write, since Kubernetes
+# creates hostPath directories as root and fsGroup does not apply to hostPath.
 echo ""
 echo "Step 4: Creating data directories on minikube node..."
-minikube ssh -- 'sudo mkdir -p /data/nomad/{public,staging,north/users}'
-minikube ssh -- 'sudo chmod -R 777 /data/nomad'
-minikube ssh -- 'sudo mkdir -p /nomad && sudo chmod -R 777 /nomad'
+minikube ssh -- 'sudo mkdir -p /app/.volumes/fs/{staging,public,north/users} /nomad'
+minikube ssh -- 'sudo chown -R 1000:1000 /app/.volumes/fs'
+minikube ssh -- 'sudo chmod -R 755 /app/.volumes/fs'
+minikube ssh -- 'sudo chmod -R 777 /nomad'
 
 # Step 5: Update Helm dependencies
 echo ""
@@ -78,8 +98,46 @@ kubectl create secret generic nomad-hub-service-api-token \
 # Step 7: Install the chart
 echo ""
 echo "Step 7: Installing NOMAD Oasis chart..."
+
+HELM_EXTRA_FLAGS=""
+if [ "$LOCAL_KEYCLOAK" = "true" ]; then
+  echo "  Local Keycloak enabled — resolving nginx ingress ClusterIP for pod hostAliases..."
+  NGINX_CLUSTERIP=""
+  for i in $(seq 1 20); do
+    NGINX_CLUSTERIP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx \
+      -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+    if [ -n "$NGINX_CLUSTERIP" ] && [ "$NGINX_CLUSTERIP" != "None" ]; then
+      break
+    fi
+    sleep 3
+  done
+  if [ -z "$NGINX_CLUSTERIP" ]; then
+    echo "  Warning: Could not determine nginx ingress ClusterIP." \
+         "Pods may not resolve $HOSTNAME internally."
+  else
+    echo "  nginx ingress ClusterIP: $NGINX_CLUSTERIP"
+    # Write hostAliases to a temp file so --set array syntax is not needed
+    HOSTS_TMPFILE="$(mktemp /tmp/nomad-local-kc-hosts-XXXXXX.yaml)"
+    cat > "$HOSTS_TMPFILE" <<EOF
+nomad:
+  app:
+    hostAliases:
+      - ip: "$NGINX_CLUSTERIP"
+        hostnames:
+          - "$HOSTNAME"
+  worker:
+    hostAliases:
+      - ip: "$NGINX_CLUSTERIP"
+        hostnames:
+          - "$HOSTNAME"
+EOF
+    HELM_EXTRA_FLAGS="-f $REPO_ROOT/charts/default/custom-values/local-keycloak.yaml -f $HOSTS_TMPFILE"
+  fi
+fi
+
 helm install "$RELEASE_NAME" . \
   -f custom-values/minikube.yaml \
+  ${HELM_EXTRA_FLAGS} \
   -n "$NAMESPACE" \
   --timeout 15m
 
@@ -112,6 +170,30 @@ echo ""
 echo "  3. Open in browser:"
 echo "     http://$HOSTNAME/nomad-oasis/gui/"
 echo ""
+
+if [ "$LOCAL_KEYCLOAK" = "true" ]; then
+  echo "=== Local Keycloak Setup Required ==="
+  echo ""
+  echo "Keycloak is running but needs a realm and client configured."
+  echo "Once all pods are ready, run these steps:"
+  echo ""
+  echo "  1. Open the Keycloak admin console:"
+  echo "     http://$HOSTNAME/auth/admin  (admin / admin)"
+  echo ""
+  echo "  2. Create a new realm:"
+  echo "     Name: nomad-oasis"
+  echo ""
+  echo "  3. Inside the 'nomad' realm, create a client:"
+  echo "     Client ID:   nomad_public"
+  echo "     Client type: OpenID Connect"
+  echo "     Public client: ON (no client secret)"
+  echo "     Valid redirect URIs: http://$HOSTNAME/*"
+  echo "     Web origins: http://$HOSTNAME"
+  echo ""
+  echo "  4. (Optional) Create a test user inside the 'nomad' realm."
+  echo ""
+fi
+
 echo "To check status:"
 echo "  ./helpers/check-status.sh"
 echo ""

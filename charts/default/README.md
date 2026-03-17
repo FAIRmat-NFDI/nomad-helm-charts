@@ -591,6 +591,55 @@ kubectl create secret generic keycloak-client-secret --from-literal=password=<yo
 kubectl create secret generic keycloak-admin-password --from-literal=password=<your-admin-password>
 ```
 
+### Option 1b: Bundled Keycloak (Local Development)
+
+For local development (Minikube or Kind), the chart can deploy Keycloak as a subchart via the `local-keycloak.yaml` overlay. This runs Keycloak in dev mode with an in-memory H2 database — **no external database is required**, but all Keycloak configuration is lost when the pod restarts.
+
+**Deploy:**
+
+```bash
+# Automated (recommended) — resolves the nginx ClusterIP automatically
+./helpers/minikube-setup.sh --local-keycloak
+
+# Manual
+NGINX_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.spec.clusterIP}')
+helm install nomad-oasis ./charts/default \
+  -f ./charts/default/custom-values/minikube.yaml \
+  -f ./charts/default/custom-values/local-keycloak.yaml \
+  --set "nomad.app.hostAliases[0].ip=$NGINX_IP" \
+  --set "nomad.app.hostAliases[0].hostnames[0]=nomad-oasis.local" \
+  --set "nomad.worker.hostAliases[0].ip=$NGINX_IP" \
+  --set "nomad.worker.hostAliases[0].hostnames[0]=nomad-oasis.local"
+```
+
+> The `hostAliases` are required so that the app and worker pods can resolve `nomad-oasis.local` to the nginx ingress ClusterIP, allowing them to reach Keycloak via the same URL the browser uses.
+
+**One-time Keycloak setup** (after all pods are running):
+
+1. Open `http://nomad-oasis.local/auth/admin` and log in as `admin` / `admin`
+
+2. Create realm: **`nomad-oasis`**
+
+3. Inside the `nomad-oasis` realm, create client **`nomad_public`**:
+   - Client type: OpenID Connect
+   - Client authentication: OFF (public client)
+   - Standard flow: ON, Direct access grants: ON
+   - Valid redirect URIs: `http://nomad-oasis.local/*`
+   - Web origins: `http://nomad-oasis.local`
+
+4. Create the **admin service account** user (required for NOMAD to look up users via the Keycloak admin API):
+   - Username: `admin`, Email: `admin@example.com`, Email verified: ON
+   - Set password `admin`, Temporary: OFF
+   - Role mapping → Client roles → `realm-management` → assign `realm-admin`
+
+5. Create login users as needed (e.g. username `test`, password `password`)
+
+> [!IMPORTANT]
+> **The admin service account user (`username: admin`) must exist inside the realm configured as `realm_name`** — not in the Keycloak `master` realm. NOMAD authenticates its admin API calls against the configured realm. If this user is missing or has wrong credentials, every API request returns `403 You are logged in with an unknown user`.
+
+> [!NOTE]
+> Because Keycloak uses an in-memory database in dev mode, this setup must be repeated each time the Keycloak pod restarts. For persistent local development, set `persistence.enabled: true` and configure a real database.
+
 ### Option 2: Institution-Managed SSO
 
 For integration with your institution's existing identity provider:
