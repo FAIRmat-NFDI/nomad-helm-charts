@@ -1,0 +1,34 @@
+# Self-signed TLS overlay for minikube
+# Apply on top of minikube.yaml and tls.yaml:
+#
+#   helm install nomad-oasis ./charts/default \
+#     -f custom-values/minikube.yaml \
+#     -f custom-values/tls.yaml \
+#     -f custom-values/minikube-selfsigned.yaml \
+#     -n nomad-oasis
+#
+# Prerequisites: see helpers/minikube-setup.sh --tls
+
+nomad:
+  config:
+    services:
+      api_port: 443
+
+  ingress:
+    certManager:
+      issuerName: selfsigned-issuer
+
+jupyterhub:
+  hub:
+    config:
+      GenericOAuthenticator:
+        oauth_callback_url: https://nomad-oasis.local/nomad-oasis/north/hub/oauth_callback
+    extraEnv:
+      NOMAD_OASIS_URL: "https://nomad-oasis.local/nomad-oasis"
+  ingress:
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    tls:
+      - hosts:
+          - nomad-oasis.local
+        secretName: nomad-oasis-jupyterhub-tls

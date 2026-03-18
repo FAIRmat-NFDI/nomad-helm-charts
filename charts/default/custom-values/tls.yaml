@@ -1,0 +1,34 @@
+# TLS overlay for nginx-based ingress controllers with cert-manager
+# visit https://cert-manager.io/docs/configuration/acme/
+nomad:
+  config:
+    services:
+      # Must be set to true when TLS is active so NOMAD generates https:// URLs
+      https: true
+
+  ingress:
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+    # cert-manager will provision and auto-renew the certificate.
+    # The TLS secret is named <release-name>-tls and created automatically.
+    certManager:
+      enabled: true
+      issuerName: letsencrypt-prod
+      issuerKind: ClusterIssuer
+
+jupyterhub:
+  hub:
+    config:
+      GenericOAuthenticator:
+        # Update the OAuth callback URL to use https when TLS is active
+        oauth_callback_url: https://your-domain.com/nomad-oasis/north/hub/oauth_callback
+    extraEnv:
+      NOMAD_OASIS_URL: "https://your-domain.com/nomad-oasis"
+  ingress:
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    tls:
+      - hosts:
+          - your-domain.com
+        secretName: nomad-oasis-jupyterhub-tls

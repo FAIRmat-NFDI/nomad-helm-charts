@@ -1,5 +1,7 @@
 {{- $config := .Values.nomad.config -}}
 {{- $path := $config.services.api_base_path -}}
+{{- $apiHost := $config.services.api_host -}}
+{{- $tlsEnabled := or .Values.nomad.ingress.tls .Values.nomad.ingress.certManager.enabled -}}
 
 {{- if and $config.temporal.enabled (not .Values.temporal.enabled) }}
 ⚠️  WARNING: temporal is enabled in nomad.yaml but temporal subchart is disabled
@@ -10,12 +12,29 @@
 {{- if and (not .Values.nomad.secrets.api.existingSecret) (not .Values.nomad.secrets.api.value) (not .Values.nomad.secrets.api.autoGenerate) }}
 ⚠️  WARNING: No API secret configured. Set nomad.secrets.api.existingSecret, nomad.secrets.api.value, or nomad.secrets.api.autoGenerate
 {{- end }}
+{{- if .Values.nomad.ingress.certManager.enabled }}
+{{- if not .Values.nomad.ingress.certManager.issuerName }}
+⚠️  WARNING: certManager is enabled but nomad.ingress.certManager.issuerName is not set. No certificate will be issued.
+{{- end }}
+{{- if not $config.services.https }}
+⚠️  WARNING: certManager is enabled but nomad.config.services.https is false. Set it to true so NOMAD generates https:// URLs.
+{{- end }}
+
+ℹ  cert-manager is enabled. It must be installed separately in the cluster (it is a
+   cluster-level operator and cannot be bundled as a subchart):
+
+     helm repo add jetstack https://charts.jetstack.io
+     helm install cert-manager jetstack/cert-manager \
+       -n cert-manager --create-namespace \
+       --set crds.enabled=true
+
+   A ClusterIssuer or Issuer named "{{ .Values.nomad.ingress.certManager.issuerName }}" must also
+   exist before certificates will be issued. See custom-values/tls.yaml for examples.
+{{- end }}
 
 1. Get the application URL by running these commands:
 {{- if .Values.nomad.ingress.enabled }}
-{{- range $host := .Values.nomad.ingress.hosts }}
-  http{{ if $.Values.nomad.ingress.tls }}s{{ end }}://{{ $host }}{{ $path }}
-{{- end }}
+  http{{ if $tlsEnabled }}s{{ end }}://{{ $apiHost }}{{ $path }}
 {{- else if contains "NodePort" .Values.nomad.service.type }}
   export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "nomad.fullname" . }})
   export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
