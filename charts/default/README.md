@@ -301,72 +301,7 @@ nomad:
 
 ## Secrets Management
 
-The chart supports multiple methods for managing secrets:
-
-### Method 1: Pre-created Kubernetes Secrets (Production)
-```yaml
-nomad:
-  secrets:
-    api:
-      existingSecret: "my-api-secret"
-      key: password
-```
-
-Create the secret manually:
-```bash
-kubectl create secret generic my-api-secret --from-literal=password=$(openssl rand -hex 32)
-```
-
-### Method 2: Values File (Development)
-```yaml
-nomad:
-  secrets:
-    api:
-      value: "my-secret-value"
-```
-
-### Method 3: Auto-generate (Default)
-```yaml
-nomad:
-  secrets:
-    api:
-      autoGenerate: true
-```
-
-### Method 4: Separate secrets.yaml File
-Create a `secrets.yaml` file (keep out of git):
-```yaml
-nomad:
-  secrets:
-    api:
-      value: "my-api-secret-here"
-    keycloak:
-      clientSecret:
-        value: "keycloak-client-secret"
-      password:
-        value: "keycloak-password"
-```
-
-Install with both files:
-```bash
-helm install nomad ./charts/default -f values.yaml -f secrets.yaml
-```
-
-### Method 5: Environment Variables with --set
-```bash
-helm install nomad ./charts/default \
-  -f values.yaml \
-  --set nomad.secrets.api.value="${NOMAD_API_SECRET}"
-```
-
-### Method 6: helm-secrets Plugin
-```bash
-# Encrypt secrets with SOPS
-sops -e secrets.yaml > secrets.enc.yaml
-
-# Install with encrypted secrets
-helm secrets install nomad ./charts/default -f values.yaml -f secrets://secrets.enc.yaml
-```
+For detailed instructions on the supported methods for managing secrets, please see the [Secrets section in the NOMAD Oasis deployment guide](https://nomad-lab.eu/prod/v1/staging/docs/howto/oasis/deploy.html#secrets).
 
 ## Local Development
 
