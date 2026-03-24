@@ -25,6 +25,7 @@ jobs:
 
       - name: Add Helm repositories
         run: |
+          helm repo add codecentric https://codecentric.github.io/helm-charts
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo add elastic https://helm.elastic.co
           helm repo add temporal https://go.temporal.io/helm-charts
