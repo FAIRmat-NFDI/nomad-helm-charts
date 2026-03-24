@@ -114,6 +114,16 @@ All configuration lives under the `nomad` key in your values file. See [`charts/
 > [!TIP]
 > To access the latest features and improvements, we recommend updating the `nomad.image.tag` to the latest stable version. You can find the available tags in the [GitLab Registry](https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-FAIR/-/container_registry).
 
+### Example values files
+
+Rather than writing a values file from scratch, you can use one of the ready-made examples as a starting point:
+
+| File | Where | Best for |
+| --- | --- | --- |
+| `kubernetes/values.yaml` | [`nomad-distro-template`](https://github.com/FAIRmat-NFDI/nomad-distro-template) | Single-node clusters (Minikube, Kind, k3s). No persistence, uses `hostPath`. Includes JupyterHub (NORTH). Uses the distro-template image. |
+| `custom-values/minikube.yaml` | `charts/default/custom-values/` | Minikube specifically. Reduced resource requests, hostname set to `nomad-oasis.local`, nginx ingress enabled. |
+| `custom-values/kind.yaml` | `charts/default/custom-values/` | Kind specifically. Similar to the Minikube file but with `localhost` as hostname and longer health-check timeouts to account for Kind's slower image pull behaviour. |
+| `custom-values/aws.yaml` | `charts/default/custom-values/` | AWS EKS. Enables persistence with EFS (`ReadWriteMany`) for NOMAD volumes and `gp2` EBS for databases. Configures an ALB ingress controller. |
 
 ### Secrets
 
