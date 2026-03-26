@@ -20,6 +20,9 @@
 #   1. Open http://nomad-oasis.local/auth/admin  (admin / admin)
 #   2. Create realm:  nomad-oasis
 #   3. Create client: nomad_public  (public, redirect URIs: http://nomad-oasis.local/*)
+#   4. The realm must contain a user matching nomad.config.keycloak.username (default: admin).
+#      NOMAD uses this account to call Keycloak's admin REST API for user lookup/registration.
+#      Either create the user manually in the new realm or import a realm JSON that includes it.
 
 # Deploy local Keycloak (codecentric/keycloakx chart, official quay.io/keycloak/keycloak image)
 keycloak:
