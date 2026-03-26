@@ -31,6 +31,13 @@ metadata:
     nginx.ingress.kubernetes.io/limit-connections: "{{ .Values.nomad.ingress.limitConnectionsApi }}"
     {{- end }}
     {{- end }}
+    {{- if .Values.nomad.ingress.certManager.enabled }}
+    {{- if eq .Values.nomad.ingress.certManager.issuerKind "ClusterIssuer" }}
+    cert-manager.io/cluster-issuer: {{ .Values.nomad.ingress.certManager.issuerName | quote }}
+    {{- else }}
+    cert-manager.io/issuer: {{ .Values.nomad.ingress.certManager.issuerName | quote }}
+    {{- end }}
+    {{- end }}
     {{- with .Values.nomad.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -38,14 +45,20 @@ spec:
   {{- if and .Values.nomad.ingress.className (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
   ingressClassName: {{ .Values.nomad.ingress.className }}
   {{- end }}
-  {{- if .Values.nomad.ingress.tls }}
+  {{- if or .Values.nomad.ingress.tls .Values.nomad.ingress.certManager.enabled }}
   tls:
+    {{- if .Values.nomad.ingress.tls }}
     {{- range .Values.nomad.ingress.tls }}
     - hosts:
         {{- range .hosts }}
         - {{ . | quote }}
         {{- end }}
       secretName: {{ .secretName }}
+    {{- end }}
+    {{- else }}
+    - hosts:
+        - {{ $apiHost | quote }}
+      secretName: {{ $fullName }}-tls
     {{- end }}
   {{- end }}
   rules:
