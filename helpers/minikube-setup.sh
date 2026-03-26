@@ -4,20 +4,17 @@
 # This script provides a clean, reproducible environment for testing the NOMAD Helm chart.
 # Run from the repository root.
 #
-# Usage: ./helpers/minikube-setup.sh [--local-keycloak]
-#
-# Flags:
-#   --local-keycloak   Deploy Keycloak inside minikube instead of using the central NOMAD
-#                      Keycloak. After deployment, create the 'nomad' realm and 'nomad_public'
-#                      client at http://nomad-oasis.local/auth/admin (admin / admin).
+# Usage:
+#   ./helpers/minikube-setup.sh           # HTTP (no TLS)
+#   ./helpers/minikube-setup.sh --tls     # HTTPS with self-signed cert-manager certificates
 
 set -euo pipefail
 
 # Parse flags
-LOCAL_KEYCLOAK=false
+USE_TLS=false
 for arg in "$@"; do
   case "$arg" in
-    --local-keycloak) LOCAL_KEYCLOAK=true ;;
+    --tls) USE_TLS=true ;;
     *) echo "Unknown argument: $arg"; exit 1 ;;
   esac
 done
@@ -46,7 +43,9 @@ HOSTNAME="${HOSTNAME:-nomad-oasis.local}"
 echo "=== NOMAD Oasis Minikube Setup ==="
 echo "CPUs: $MINIKUBE_CPUS, Memory: ${MINIKUBE_MEMORY}MB, Disk: $MINIKUBE_DISK"
 echo "Namespace: $NAMESPACE, Hostname: $HOSTNAME"
-echo "Local Keycloak: $LOCAL_KEYCLOAK"
+if $USE_TLS; then
+  echo "TLS: enabled (self-signed via cert-manager)"
+fi
 
 # Step 1: Clean up any existing minikube
 echo ""
@@ -87,6 +86,25 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT/charts/default"
 helm dependency update .
 
+# Step 5b (TLS only): Install cert-manager and self-signed issuer
+if $USE_TLS; then
+  echo ""
+  echo "Step 5b: Installing cert-manager..."
+  helm repo add jetstack https://charts.jetstack.io --force-update
+  helm upgrade --install cert-manager jetstack/cert-manager \
+    --namespace cert-manager --create-namespace \
+    --set crds.enabled=true \
+    --wait --timeout 5m
+
+  echo ""
+  echo "Step 5c: Applying self-signed ClusterIssuers..."
+  kubectl apply -f "$REPO_ROOT/charts/default/custom-values/tls-issuer/selfsigned.yaml"
+
+  echo "Waiting for selfsigned-issuer to become ready..."
+  kubectl wait clusterissuer/selfsigned-issuer \
+    --for=condition=Ready --timeout=60s
+fi
+
 # Step 6: Create namespace and secrets
 echo ""
 echo "Step 6: Creating namespace and secrets..."
@@ -98,48 +116,19 @@ kubectl create secret generic nomad-hub-service-api-token \
 # Step 7: Install the chart
 echo ""
 echo "Step 7: Installing NOMAD Oasis chart..."
-
-HELM_EXTRA_FLAGS=""
-if [ "$LOCAL_KEYCLOAK" = "true" ]; then
-  echo "  Local Keycloak enabled — resolving nginx ingress ClusterIP for pod hostAliases..."
-  NGINX_CLUSTERIP=""
-  for i in $(seq 1 20); do
-    NGINX_CLUSTERIP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx \
-      -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
-    if [ -n "$NGINX_CLUSTERIP" ] && [ "$NGINX_CLUSTERIP" != "None" ]; then
-      break
-    fi
-    sleep 3
-  done
-  if [ -z "$NGINX_CLUSTERIP" ]; then
-    echo "  Warning: Could not determine nginx ingress ClusterIP." \
-         "Pods may not resolve $HOSTNAME internally."
-  else
-    echo "  nginx ingress ClusterIP: $NGINX_CLUSTERIP"
-    # Write hostAliases to a temp file so --set array syntax is not needed
-    HOSTS_TMPFILE="$(mktemp /tmp/nomad-local-kc-hosts-XXXXXX.yaml)"
-    cat > "$HOSTS_TMPFILE" <<EOF
-nomad:
-  app:
-    hostAliases:
-      - ip: "$NGINX_CLUSTERIP"
-        hostnames:
-          - "$HOSTNAME"
-  worker:
-    hostAliases:
-      - ip: "$NGINX_CLUSTERIP"
-        hostnames:
-          - "$HOSTNAME"
-EOF
-    HELM_EXTRA_FLAGS="-f $REPO_ROOT/charts/default/custom-values/local-keycloak.yaml -f $HOSTS_TMPFILE"
-  fi
+if $USE_TLS; then
+  helm install "$RELEASE_NAME" . \
+    -f custom-values/minikube.yaml \
+    -f custom-values/tls.yaml \
+    -f custom-values/minikube-selfsigned.yaml \
+    -n "$NAMESPACE" \
+    --timeout 15m
+else
+  helm install "$RELEASE_NAME" . \
+    -f custom-values/minikube.yaml \
+    -n "$NAMESPACE" \
+    --timeout 15m
 fi
-
-helm install "$RELEASE_NAME" . \
-  -f custom-values/minikube.yaml \
-  ${HELM_EXTRA_FLAGS} \
-  -n "$NAMESPACE" \
-  --timeout 15m
 
 # Step 8: Wait for pods
 echo ""

@@ -87,6 +87,10 @@ spec:
               name: nginx-conf
             - mountPath: /var/log/nginx
               name: log
+            - mountPath: /var/cache/nginx
+              name: nginx-cache
+            - mountPath: /var/run
+              name: nginx-run
           {{- with .Values.nomad.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -101,6 +105,10 @@ spec:
             - key: nginx.conf
               path: default.conf
         - name: log
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
           emptyDir: {}
       {{- with .Values.nomad.volumes }}
         {{- toYaml . | nindent 8 }}
