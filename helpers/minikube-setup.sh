@@ -68,11 +68,16 @@ minikube addons enable ingress
 minikube addons enable storage-provisioner
 
 # Step 4: Create host directories for nomad data
+# These match the default hostPath volumes in values.yaml (fs.staging_external,
+# fs.public_external, fs.north_home_external). Pre-creating them with UID 1000
+# (the nomad user) avoids a PermissionError on first write, since Kubernetes
+# creates hostPath directories as root and fsGroup does not apply to hostPath.
 echo ""
 echo "Step 4: Creating data directories on minikube node..."
-minikube ssh -- 'sudo mkdir -p /data/nomad/{public,staging,north/users}'
-minikube ssh -- 'sudo chmod -R 777 /data/nomad'
-minikube ssh -- 'sudo mkdir -p /nomad && sudo chmod -R 777 /nomad'
+minikube ssh -- 'sudo mkdir -p /app/.volumes/fs/{staging,public,north/users} /nomad'
+minikube ssh -- 'sudo chown -R 1000:1000 /app/.volumes/fs'
+minikube ssh -- 'sudo chmod -R 755 /app/.volumes/fs'
+minikube ssh -- 'sudo chmod -R 777 /nomad'
 
 # Step 5: Update Helm dependencies
 echo ""
@@ -154,6 +159,30 @@ echo ""
 echo "  3. Open in browser:"
 echo "     http://$HOSTNAME/nomad-oasis/gui/"
 echo ""
+
+if [ "$LOCAL_KEYCLOAK" = "true" ]; then
+  echo "=== Local Keycloak Setup Required ==="
+  echo ""
+  echo "Keycloak is running but needs a realm and client configured."
+  echo "Once all pods are ready, run these steps:"
+  echo ""
+  echo "  1. Open the Keycloak admin console:"
+  echo "     http://$HOSTNAME/auth/admin  (admin / admin)"
+  echo ""
+  echo "  2. Create a new realm:"
+  echo "     Name: nomad-oasis"
+  echo ""
+  echo "  3. Inside the 'nomad' realm, create a client:"
+  echo "     Client ID:   nomad_public"
+  echo "     Client type: OpenID Connect"
+  echo "     Public client: ON (no client secret)"
+  echo "     Valid redirect URIs: http://$HOSTNAME/*"
+  echo "     Web origins: http://$HOSTNAME"
+  echo ""
+  echo "  4. (Optional) Create a test user inside the 'nomad' realm."
+  echo ""
+fi
+
 echo "To check status:"
 echo "  ./helpers/check-status.sh"
 echo ""

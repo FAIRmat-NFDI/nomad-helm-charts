@@ -1,0 +1,95 @@
+# Local Keycloak Overlay
+#
+# Deploys a Keycloak instance inside the cluster (dev mode, H2 in-memory DB) and
+# wires NOMAD + JupyterHub to use it. Keycloak is served at nomad-oasis.local/auth.
+#
+# Layer on top of your base values file (e.g. minikube.yaml):
+#
+#   helm install nomad-oasis . \
+#     -f custom-values/minikube.yaml \
+#     -f custom-values/local-keycloak.yaml \
+#     --set "nomad.app.hostAliases[0].ip=<nginx-clusterip>" \
+#     --set "nomad.app.hostAliases[0].hostnames[0]=nomad-oasis.local" \
+#     --set "nomad.worker.hostAliases[0].ip=<nginx-clusterip>" \
+#     --set "nomad.worker.hostAliases[0].hostnames[0]=nomad-oasis.local"
+#
+# The nginx ClusterIP is required so pods can resolve nomad-oasis.local internally.
+# Use the minikube-setup.sh --local-keycloak flag to handle this automatically.
+#
+# After deployment, create the realm and client in Keycloak:
+#   1. Open http://nomad-oasis.local/auth/admin  (admin / admin)
+#   2. Create realm:  nomad-oasis
+#   3. Create client: nomad_public  (public, redirect URIs: http://nomad-oasis.local/*)
+#   4. The realm must contain a user matching nomad.config.keycloak.username (default: admin).
+#      NOMAD uses this account to call Keycloak's admin REST API for user lookup/registration.
+#      Either create the user manually in the new realm or import a realm JSON that includes it.
+
+# Deploy local Keycloak (codecentric/keycloakx chart, official quay.io/keycloak/keycloak image)
+keycloak:
+  enabled: true
+
+  # Dev mode: uses H2 in-memory DB, no external DB required
+  command:
+    - /opt/keycloak/bin/kc.sh
+  cache:
+    stack: local
+
+  args:
+    - start-dev
+    - --http-relative-path=/auth
+
+  extraEnv: |
+    - name: KC_BOOTSTRAP_ADMIN_USERNAME
+      value: "admin"
+    - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+      value: "admin"
+
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    rules:
+      - host: nomad-oasis.local
+        paths:
+          - path: /auth
+            pathType: Prefix
+
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+
+# Point NOMAD at the local Keycloak
+nomad:
+  config:
+    keycloak:
+      server_url: "http://nomad-oasis.local/auth/"
+      realm_name: "nomad-oasis"
+      username: admin
+      client_id: "nomad_public"
+    oasis:
+      is_oasis: true
+      uses_central_user_management: false
+
+  secrets:
+    keycloak:
+      # Password for Keycloak admin service account — used by NOMAD to call
+      # Keycloak's admin REST API to look up / register users on first login.
+      # For production: use existingSecret instead of value.
+      password:
+        value: "admin"  # matches KC_BOOTSTRAP_ADMIN_PASSWORD above
+
+# Point JupyterHub at the local Keycloak
+jupyterhub:
+  hub:
+    config:
+      GenericOAuthenticator:
+        client_id: nomad_public
+        oauth_callback_url: http://nomad-oasis.local/nomad-oasis/north/hub/oauth_callback
+        authorize_url: http://nomad-oasis.local/auth/realms/nomad-oasis/protocol/openid-connect/auth
+        token_url: http://nomad-oasis.local/auth/realms/nomad-oasis/protocol/openid-connect/token
+        userdata_url: http://nomad-oasis.local/auth/realms/nomad-oasis/protocol/openid-connect/userinfo
