@@ -64,7 +64,7 @@ spec:
               name: public-volume
             - mountPath: /app/.volumes/fs/staging
               name: staging-volume
-            - mountPath: /nomad
+            - mountPath: /app/adminconsole
               name: nomad-volume
             {{- with .Values.nomad.volumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -106,7 +106,7 @@ spec:
                   name: {{ include "nomad.secretName.keycloakPassword" . }}
                   key: {{ .Values.nomad.secrets.keycloak.password.key }}
             {{- end }}
-          command: ["jupyter", "lab", "--notebook-dir", "/nomad/adminconsole"]
+          command: ["jupyter", "lab", "--notebook-dir", "/app/adminconsole"]
           livenessProbe:
             exec:
               command:

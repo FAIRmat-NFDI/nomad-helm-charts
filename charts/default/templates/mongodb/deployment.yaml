@@ -20,6 +20,21 @@ spec:
         {{- include "nomad.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: mongodb
     spec:
+      {{- if .Values.nomad.priorityClass.enabled }}
+      priorityClassName: {{ .Values.nomad.priorityClass.name }}
+      {{- end }}
+      {{- with .Values.mongodb.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mongodb.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mongodb.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: mongodb
           image: "{{ .Values.mongodb.image.repository }}:{{ .Values.mongodb.image.tag }}"
