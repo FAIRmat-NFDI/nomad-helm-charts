@@ -5,16 +5,19 @@
 # Run from the repository root.
 #
 # Usage:
-#   ./helpers/minikube-setup.sh           # HTTP (no TLS)
-#   ./helpers/minikube-setup.sh --tls     # HTTPS with self-signed cert-manager certificates
+#   ./helpers/minikube-setup.sh                    # HTTP (no TLS), central Keycloak
+#   ./helpers/minikube-setup.sh --tls              # HTTPS with self-signed cert-manager certificates
+#   ./helpers/minikube-setup.sh --local-keycloak   # in-cluster Keycloak (admin/admin)
 
 set -euo pipefail
 
 # Parse flags
 USE_TLS=false
+LOCAL_KEYCLOAK=false
 for arg in "$@"; do
   case "$arg" in
     --tls) USE_TLS=true ;;
+    --local-keycloak) LOCAL_KEYCLOAK=true ;;
     *) echo "Unknown argument: $arg"; exit 1 ;;
   esac
 done
@@ -45,6 +48,9 @@ echo "CPUs: $MINIKUBE_CPUS, Memory: ${MINIKUBE_MEMORY}MB, Disk: $MINIKUBE_DISK"
 echo "Namespace: $NAMESPACE, Hostname: $HOSTNAME"
 if $USE_TLS; then
   echo "TLS: enabled (self-signed via cert-manager)"
+fi
+if $LOCAL_KEYCLOAK; then
+  echo "Keycloak: local (in-cluster, dev mode)"
 fi
 
 # Step 1: Clean up any existing minikube
@@ -116,19 +122,29 @@ kubectl create secret generic nomad-hub-service-api-token \
 # Step 7: Install the chart
 echo ""
 echo "Step 7: Installing NOMAD Oasis chart..."
+HELM_ARGS=(-f custom-values/minikube.yaml)
 if $USE_TLS; then
-  helm install "$RELEASE_NAME" . \
-    -f custom-values/minikube.yaml \
-    -f custom-values/tls.yaml \
-    -f custom-values/minikube-selfsigned.yaml \
-    -n "$NAMESPACE" \
-    --timeout 15m
-else
-  helm install "$RELEASE_NAME" . \
-    -f custom-values/minikube.yaml \
-    -n "$NAMESPACE" \
-    --timeout 15m
+  HELM_ARGS+=(-f custom-values/tls.yaml -f custom-values/minikube-selfsigned.yaml)
 fi
+if $LOCAL_KEYCLOAK; then
+  # NOMAD pods need to resolve $HOSTNAME (the Keycloak ingress host) to the
+  # in-cluster nginx ClusterIP, since OIDC discovery happens server-side.
+  NGINX_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+    -o jsonpath='{.spec.clusterIP}')
+  if [ -z "$NGINX_IP" ]; then
+    echo "Error: could not resolve ingress-nginx-controller ClusterIP."
+    exit 1
+  fi
+  echo "  Wiring local Keycloak via hostAliases ($HOSTNAME -> $NGINX_IP)"
+  HELM_ARGS+=(
+    -f custom-values/local-keycloak.yaml
+    --set "nomad.app.hostAliases[0].ip=$NGINX_IP"
+    --set "nomad.app.hostAliases[0].hostnames[0]=$HOSTNAME"
+    --set "nomad.worker.hostAliases[0].ip=$NGINX_IP"
+    --set "nomad.worker.hostAliases[0].hostnames[0]=$HOSTNAME"
+  )
+fi
+helm install "$RELEASE_NAME" . "${HELM_ARGS[@]}" -n "$NAMESPACE" --timeout 15m
 
 # Step 8: Wait for pods
 echo ""

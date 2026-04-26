@@ -3,7 +3,15 @@
 # Deploys a Keycloak instance inside the cluster (dev mode, H2 in-memory DB) and
 # wires NOMAD + JupyterHub to use it. Keycloak is served at nomad-oasis.local/auth.
 #
-# Layer on top of your base values file (e.g. minikube.yaml):
+# The simplest way to use this is the setup script:
+#
+#   ./helpers/minikube-setup.sh --local-keycloak
+#
+# It layers this overlay onto minikube.yaml and injects hostAliases pointing
+# nomad-oasis.local at the in-cluster nginx ClusterIP, so server-side OIDC
+# discovery from NOMAD pods resolves the Keycloak ingress.
+#
+# To layer manually onto another base values file:
 #
 #   helm install nomad-oasis . \
 #     -f custom-values/minikube.yaml \
@@ -12,9 +20,6 @@
 #     --set "nomad.app.hostAliases[0].hostnames[0]=nomad-oasis.local" \
 #     --set "nomad.worker.hostAliases[0].ip=<nginx-clusterip>" \
 #     --set "nomad.worker.hostAliases[0].hostnames[0]=nomad-oasis.local"
-#
-# The nginx ClusterIP is required so pods can resolve nomad-oasis.local internally.
-# Use the minikube-setup.sh --local-keycloak flag to handle this automatically.
 #
 # After deployment, create the realm and client in Keycloak:
 #   1. Open http://nomad-oasis.local/auth/admin  (admin / admin)

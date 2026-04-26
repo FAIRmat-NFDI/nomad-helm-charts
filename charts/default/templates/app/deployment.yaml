@@ -102,6 +102,8 @@ spec:
           env:
             - name: MPLCONFIGDIR
               value: /tmp/matplotlib
+            - name: NOMAD_CONFIG
+              value: /app/nomad.yaml
             - name: NOMAD_META_SERVICE
               value: "app"
             - name: NOMAD_CONSOLE_LOGLEVEL
