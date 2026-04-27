@@ -78,6 +78,8 @@ spec:
           env:
             - name: MPLCONFIGDIR
               value: /tmp/matplotlib
+            - name: NOMAD_CONFIG
+              value: /app/nomad.yaml
             - name: NOMAD_META_SERVICE
               value: "worker"
             - name: NOMAD_CONSOLE_LOG_LEVEL
@@ -163,6 +165,10 @@ spec:
       {{- end }}
       {{- with .Values.nomad.worker.tolerations }}
       tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nomad.worker.hostAliases }}
+      hostAliases:
         {{- toYaml . | nindent 8 }}
       {{- end }}
 {{- end }}

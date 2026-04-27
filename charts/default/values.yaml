@@ -2,7 +2,11 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 roll: false
-nameOverride: ""
+# Pin nameOverride to "nomad" so the chart name (`default`, used to publish
+# the chart as nomad/default) does not propagate into generated resource names
+# or the `app.kubernetes.io/name` selector. Selectors are immutable on
+# Deployments, so renaming would break helm upgrade for existing releases.
+nameOverride: "nomad"
 fullnameOverride: ""
 
 serviceAccount:
@@ -18,6 +22,10 @@ serviceAccount:
 
 nomad:
   enabled: true
+
+  priorityClass:
+    enabled: false
+    name: ""
 
   config:
     services:
@@ -56,6 +64,9 @@ nomad:
       enabled: true
       ui_enabled: false
       namespace: default
+      # Temporal frontend host. Leave unset to use the bundled subchart at
+      # <release>-temporal-frontend; set to point at an external Temporal cluster.
+      host: ""
       graceful_shutdown_timeout: null
       processing_timeouts: {}
 
@@ -136,7 +147,7 @@ nomad:
 
   image:
     repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
-    tag: v1.4.1
+    tag: v1.4.2
     pullPolicy: Always
 
   persistence:
@@ -291,6 +302,7 @@ nomad:
     nodeSelector: {}
     tolerations: []
     affinity: {}
+    hostAliases: []
     podAnnotations: {}
     podLabels: {}
     livenessProbe:
@@ -308,6 +320,7 @@ nomad:
     processes: null
     maxTasksPerChild: 128
     storage: null # "memory" or "disk"
+    hostAliases: []
     autoscaling:
       enabled: false
       minReplicas: 1
@@ -453,7 +466,24 @@ nomad:
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
       nginx.ingress.kubernetes.io/proxy-body-size: 32g
+    # TLS configuration. Either provide pre-existing TLS secrets or use cert-manager below.
+    # Standard Kubernetes ingress TLS format; also used when certManager.enabled is false.
+    # Example:
+    #   tls:
+    #     - hosts:
+    #         - your-domain.com
+    #       secretName: nomad-oasis-tls
     tls: []
+    # cert-manager integration: automatically provision and renew TLS certificates.
+    # Requires cert-manager to be installed in the cluster.
+    # Works with any ingress controller (nginx, Traefik, Contour, etc.).
+    # When enabled, a TLS entry is auto-generated from nomad.config.services.api_host
+    # (unless nomad.ingress.tls is already set manually).
+    # Remember to also set nomad.config.services.https: true.
+    certManager:
+      enabled: false
+      issuerName: ""        # Name of the cert-manager Issuer or ClusterIssuer resource
+      issuerKind: ClusterIssuer  # ClusterIssuer (cluster-wide) or Issuer (namespace-scoped)
 
   volumes: []
   volumeMounts: []
@@ -749,4 +779,7 @@ postgresql:
           CREATE DATABASE "temporal_visibility";
 
 keda:
+  enabled: false
+
+keycloak:
   enabled: false

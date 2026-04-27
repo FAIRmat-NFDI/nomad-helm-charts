@@ -192,6 +192,10 @@ nomad:
       key: password
       value: ""
       autoGenerate: true
+    north:
+      hubServiceApiToken:
+        existingSecret: "nomad-hub-service-api-token"
+        key: token
 
   ingress:
     enabled: true

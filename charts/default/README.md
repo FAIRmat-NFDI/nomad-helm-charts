@@ -301,72 +301,7 @@ nomad:
 
 ## Secrets Management
 
-The chart supports multiple methods for managing secrets:
-
-### Method 1: Pre-created Kubernetes Secrets (Production)
-```yaml
-nomad:
-  secrets:
-    api:
-      existingSecret: "my-api-secret"
-      key: password
-```
-
-Create the secret manually:
-```bash
-kubectl create secret generic my-api-secret --from-literal=password=$(openssl rand -hex 32)
-```
-
-### Method 2: Values File (Development)
-```yaml
-nomad:
-  secrets:
-    api:
-      value: "my-secret-value"
-```
-
-### Method 3: Auto-generate (Default)
-```yaml
-nomad:
-  secrets:
-    api:
-      autoGenerate: true
-```
-
-### Method 4: Separate secrets.yaml File
-Create a `secrets.yaml` file (keep out of git):
-```yaml
-nomad:
-  secrets:
-    api:
-      value: "my-api-secret-here"
-    keycloak:
-      clientSecret:
-        value: "keycloak-client-secret"
-      password:
-        value: "keycloak-password"
-```
-
-Install with both files:
-```bash
-helm install nomad ./charts/default -f values.yaml -f secrets.yaml
-```
-
-### Method 5: Environment Variables with --set
-```bash
-helm install nomad ./charts/default \
-  -f values.yaml \
-  --set nomad.secrets.api.value="${NOMAD_API_SECRET}"
-```
-
-### Method 6: helm-secrets Plugin
-```bash
-# Encrypt secrets with SOPS
-sops -e secrets.yaml > secrets.enc.yaml
-
-# Install with encrypted secrets
-helm secrets install nomad ./charts/default -f values.yaml -f secrets://secrets.enc.yaml
-```
+For detailed instructions on the supported methods for managing secrets, please see the [Secrets section in the NOMAD Oasis deployment guide](https://nomad-lab.eu/prod/v1/staging/docs/howto/oasis/deploy.html#secrets).
 
 ## Local Development
 
@@ -590,6 +525,31 @@ Create the required secrets:
 kubectl create secret generic keycloak-client-secret --from-literal=password=<your-client-secret>
 kubectl create secret generic keycloak-admin-password --from-literal=password=<your-admin-password>
 ```
+
+### Option 1b: Bundled Keycloak (Local Development)
+
+For local development (Minikube or Kind), the chart can deploy Keycloak as a subchart via the `local-keycloak.yaml` overlay. This runs Keycloak in dev mode with an in-memory H2 database — **no external database is required**, but all Keycloak configuration is lost when the pod restarts.
+
+**Deploy:**
+
+```bash
+# Automated (recommended) — resolves the nginx ClusterIP automatically
+./helpers/minikube-setup.sh --local-keycloak
+
+# Manual
+NGINX_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.spec.clusterIP}')
+helm install nomad-oasis ./charts/default \
+  -f ./charts/default/custom-values/minikube.yaml \
+  -f ./charts/default/custom-values/local-keycloak.yaml \
+  --set "nomad.app.hostAliases[0].ip=$NGINX_IP" \
+  --set "nomad.app.hostAliases[0].hostnames[0]=nomad-oasis.local" \
+  --set "nomad.worker.hostAliases[0].ip=$NGINX_IP" \
+  --set "nomad.worker.hostAliases[0].hostnames[0]=nomad-oasis.local"
+```
+
+> The `hostAliases` are required so that the app and worker pods can resolve `nomad-oasis.local` to the nginx ingress ClusterIP, allowing them to reach Keycloak via the same URL the browser uses.
+
+After deployment, complete the one-time Keycloak setup described in the [custom-values README](custom-values/README.md#local-keycloak-development).
 
 ### Option 2: Institution-Managed SSO
 
