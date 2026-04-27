@@ -2,7 +2,11 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 roll: false
-nameOverride: ""
+# Pin nameOverride to "nomad" so the chart name (`default`, used to publish
+# the chart as nomad/default) does not propagate into generated resource names
+# or the `app.kubernetes.io/name` selector. Selectors are immutable on
+# Deployments, so renaming would break helm upgrade for existing releases.
+nameOverride: "nomad"
 fullnameOverride: ""
 
 serviceAccount:

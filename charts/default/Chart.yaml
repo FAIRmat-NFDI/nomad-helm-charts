@@ -1,12 +1,12 @@
 apiVersion: v2
-name: nomad
+name: default
 description: Helm chart for deploying NOMAD and its dependencies (Elasticsearch, JupyterHub, Temporal, PostgreSQL, Keycloak)
 type: application
 
 # This is the chart version. This version number should be incremented each time you make changes
 # to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: 1.0.0
+version: 1.4.2
 
 # NOMAD application version being deployed
 appVersion: "1.4.2"

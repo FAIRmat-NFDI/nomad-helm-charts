@@ -15,4 +15,4 @@ dependencies:
   repository: https://codecentric.github.io/helm-charts
   version: 7.1.9
 digest: sha256:d26a5e3466079fdddca383b888bcd597d4d0482f0ce7b63c215c2c31fc1f1b2c
-generated: "2026-04-26T16:26:00.359683906+02:00"
+generated: "2026-04-27T11:10:43.675094806+02:00"

@@ -21,13 +21,16 @@
 #     --set "nomad.worker.hostAliases[0].ip=<nginx-clusterip>" \
 #     --set "nomad.worker.hostAliases[0].hostnames[0]=nomad-oasis.local"
 #
-# After deployment, create the realm and client in Keycloak:
+# After deployment, import the pre-built realm definition:
 #   1. Open http://nomad-oasis.local/auth/admin  (admin / admin)
-#   2. Create realm:  nomad-oasis
-#   3. Create client: nomad_public  (public, redirect URIs: http://nomad-oasis.local/*)
-#   4. The realm must contain a user matching nomad.config.keycloak.username (default: admin).
-#      NOMAD uses this account to call Keycloak's admin REST API for user lookup/registration.
-#      Either create the user manually in the new realm or import a realm JSON that includes it.
+#   2. Top-left dropdown -> "Create realm"
+#   3. "Resource file" -> upload custom-values/local-keycloak-realm.json
+#   4. Click "Create"
+#
+# The JSON creates everything in one shot: the `nomad-oasis` realm, the
+# `nomad_public` public client (redirect: http://nomad-oasis.local/*), an
+# `admin` user with realm-admin role (used by NOMAD to call Keycloak's admin
+# REST API for user lookup/registration), and a `test` user for login testing.
 
 # Deploy local Keycloak (codecentric/keycloakx chart, official quay.io/keycloak/keycloak image)
 keycloak:
