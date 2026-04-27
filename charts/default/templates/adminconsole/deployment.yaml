@@ -77,7 +77,8 @@ spec:
               value: /tmp
             - name: JUPYTER_DATA_DIR
               value: /tmp
-
+            - name: NOMAD_CONFIG
+              value: /app/nomad.yaml
             - name: NOMAD_META_SERVICE
               value: "adminconsole"
             - name: NOMAD_CONSOLE_LOG_LEVEL
