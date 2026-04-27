@@ -93,6 +93,12 @@ spec:
               name: north-home-volume
             - mountPath: /nomad
               name: nomad-volume
+            # /app/run is created at runtime by `nomad.cli admin run app --with-gui`
+            # to stage a base-path-rewritten copy of the GUI bundle
+            # (config.fs.working_directory + "/run/gui_configured"). An emptyDir
+            # gives the non-root pod a writable scratch dir without touching the image.
+            - mountPath: /app/run
+              name: app-run-volume
             {{- with .Values.nomad.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -157,7 +163,7 @@ spec:
                   name: {{ include "nomad.secretName.north" . }}
                   key: {{ .Values.nomad.secrets.north.hubServiceApiToken.key }}
             {{- end }}
-          command: ["python", "-m", "nomad.cli", "admin", "run", "app", "--log-config", "uvicorn.log.conf", "--with-gui", "--host", "0.0.0.0"]
+          command: ["python", "-m", "nomad.cli", "admin", "run", "app", "--log-config", "/app/uvicorn.log.conf", "--with-gui", "--host", "0.0.0.0"]
       volumes:
         {{- with .Values.nomad.volumes }}
         {{- toYaml . | nindent 8 }}
@@ -168,9 +174,8 @@ spec:
         - name: uvicorn-log-conf
           configMap:
             name: {{ include "nomad.fullname" . }}-configmap-app-uvicorn-log-config
-        - name: app-run-script
-          configMap:
-            name: {{ include "nomad.fullname" . }}-app-run-script
+        - name: app-run-volume
+          emptyDir: {}
         - name: nomad-conf
           configMap:
             name: {{ include "nomad.fullname" . }}-configmap
