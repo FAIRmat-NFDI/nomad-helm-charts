@@ -147,8 +147,8 @@ nomad:
       uses_central_user_management: false
 
   image:
-    repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
-    tag: latest
+    repository: ghcr.io/fairmat-nfdi/nomad-distribution-template
+    tag: main
     pullPolicy: IfNotPresent
 
   proxy:
