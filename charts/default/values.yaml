@@ -146,8 +146,8 @@ nomad:
     # ui: {}
 
   image:
-    repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
-    tag: v1.4.2
+    repository: ghcr.io/fairmat-nfdi/nomad-distribution-template
+    tag: main
     pullPolicy: Always
 
   persistence:
