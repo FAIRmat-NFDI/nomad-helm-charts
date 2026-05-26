@@ -43,7 +43,7 @@ nomad:
       prefix_size: 1
       archive_version_suffix: []
       working_directory: /app
-      nomad: /nomad
+      nomad: /app/nomad
 
     mongo:
       db_name: nomad_oasis
@@ -73,7 +73,7 @@ nomad:
     meta:
       service: app
       homepage: https://nomad-lab.eu
-      source_url: https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-distro
+      source_url: https://github.com/fairmat-nfdi/nomad-distro-template
       maintainer_email: support@nomad-lab.eu
       footer_links: []
       beta:
@@ -146,7 +146,7 @@ nomad:
     # ui: {}
 
   image:
-    repository: ghcr.io/fairmat-nfdi/nomad-distribution-template
+    repository: ghcr.io/fairmat-nfdi/nomad-distro-template
     tag: main
     pullPolicy: Always
 
@@ -432,31 +432,6 @@ nomad:
       periodSeconds: 5
       successThreshold: 1
       timeoutSeconds: 1
-
-  adminconsole:
-    enabled: false
-    replicaCount: 1
-    podSecurityContext:
-      fsGroup: 1000
-    securityContext:
-      runAsNonRoot: true
-      runAsUser: 1000
-    resources: {}
-    volumes: []
-    volumeMounts: []
-    nodeSelector: {}
-    tolerations: []
-    affinity: {}
-    podAnnotations: {}
-    podLabels: {}
-    livenessProbe:
-      initialDelaySeconds: 30
-      periodSeconds: 120
-      timeoutSeconds: 60
-    readinessProbe:
-      initialDelaySeconds: 30
-      periodSeconds: 120
-      timeoutSeconds: 60
 
   ingress:
     enabled: false

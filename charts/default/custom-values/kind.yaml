@@ -58,7 +58,7 @@ nomad:
       public_external: /app/.volumes/fs/public
       north_home_external: /app/.volumes/fs/north/users
       prefix_size: 1
-      nomad: /nomad
+      nomad: /app/nomad
       working_directory: /app
 
     mongo:
@@ -83,7 +83,7 @@ nomad:
     meta:
       service: app
       homepage: http://localhost/nomad-oasis
-      source_url: https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-distro
+      source_url: https://github.com/fairmat-nfdi/nomad-distro-template
       maintainer_email: support@nomad-lab.eu
       footer_links: []
       beta:
@@ -147,7 +147,7 @@ nomad:
       uses_central_user_management: false
 
   image:
-    repository: ghcr.io/fairmat-nfdi/nomad-distribution-template
+    repository: ghcr.io/fairmat-nfdi/nomad-distro-template
     tag: main
     pullPolicy: IfNotPresent
 

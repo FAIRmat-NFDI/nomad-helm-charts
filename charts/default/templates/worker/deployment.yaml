@@ -67,7 +67,7 @@ spec:
               name: public-volume
             - mountPath: /app/.volumes/fs/staging
               name: staging-volume
-            - mountPath: /nomad
+            - mountPath: /app/nomad
               name: nomad-volume
             {{- with .Values.nomad.volumeMounts }}
             {{- toYaml . | nindent 12 }}
