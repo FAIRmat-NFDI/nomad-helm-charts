@@ -44,8 +44,8 @@ Kubernetes deployment configuration (replicas, resources, timeouts, secrets).
 nomad:
   enabled: true
   image:
-    repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
-    tag: latest
+    repository: ghcr.io/fairmat-nfdi/nomad-distro-template
+    tag: main
 
   proxy:
     replicaCount: 1
@@ -127,12 +127,12 @@ Pin a specific version rather than using `latest`:
 ```yaml
 nomad:
   image:
-    repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
-    tag: "v1.2.2"
+    repository: ghcr.io/fairmat-nfdi/nomad-distro-template
+    tag: "v2.2.0"
 ```
 
 > [!TIP]
-> To access the latest features and improvements, we recommend updating the `nomad.image.tag` to the latest stable version. You can find the available tags in the [GitLab Registry](https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-FAIR/-/container_registry).
+> To access the latest features and improvements, we recommend updating the `nomad.image.tag` to the latest stable version. You can find the available tags in the [GitHub Container Registry](https://github.com/fairmat-nfdi/nomad-distro-template/pkgs/container/nomad-distro-template).
 
 
 ### Authentication (`nomad.config.keycloak`)
@@ -624,7 +624,7 @@ nomad:
       tools:
         options:
           jupyter:
-            image: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro/jupyter:develop
+            image: ghcr.io/fairmat-nfdi/nomad-distro-template/jupyter:main
 
 jupyterhub:
   enabled: true
@@ -663,7 +663,7 @@ nomad:
       tools:
         options:
           jupyter:
-            image: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro/jupyter:develop
+            image: ghcr.io/fairmat-nfdi/nomad-distro-template/jupyter:main
           my-custom-tool:
             image: my-registry/my-tool:latest
 ```

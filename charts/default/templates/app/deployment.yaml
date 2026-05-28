@@ -91,7 +91,7 @@ spec:
               name: staging-volume
             - mountPath: /app/.volumes/fs/north/users
               name: north-home-volume
-            - mountPath: /nomad
+            - mountPath: /app/nomad
               name: nomad-volume
             # /app/run is created at runtime by `nomad.cli admin run app --with-gui`
             # to stage a base-path-rewritten copy of the GUI bundle
