@@ -26,6 +26,7 @@ nomad:
     fs:
       staging_external: /app/.volumes/fs/staging   # Used for volume mounts
       public_external: /app/.volumes/fs/public
+      tmp_external: /app/.volumes/fs/tmp
       north_home_external: /app/.volumes/fs/north/users
     mongo:
       db_name: nomad_oasis
@@ -196,6 +197,7 @@ The chart supports configurable persistence: you can switch from `hostPath` to `
 |--------|-----------|---------|-----------------|
 | `public` | `/app/.volumes/fs/public` | All components | `/app/.volumes/fs/public` |
 | `staging` | `/app/.volumes/fs/staging` | All components | `/app/.volumes/fs/staging` |
+| `tmp` | `/app/.volumes/fs/tmp` | App + worker | `/app/.volumes/fs/tmp` |
 | `north-home` | `/app/.volumes/fs/north/users` | App only | `/app/.volumes/fs/north/users` |
 
 ### Enabling PVC-based persistence
@@ -210,7 +212,7 @@ nomad:
     accessMode: ReadWriteMany     # required for multi-node access
 ```
 
-This creates 3 PVCs (one per volume) and all deployments reference them instead of `hostPath`.
+This creates up to 4 PVCs (one per volume) and all deployments reference them instead of `hostPath` (staging/tmp are skipped when `nomad.worker.storage: memory`).
 
 ### Per-volume configuration
 
@@ -326,7 +328,7 @@ minikube addons enable ingress
 # Paths must match nomad.config.fs.{staging,public,north_home}_external in
 # custom-values/minikube.yaml. Owned by UID 1000 to match the pod runAsUser
 # (fsGroup does not apply to hostPath volumes).
-minikube ssh -- 'sudo mkdir -p /app/.volumes/fs/{staging,public,north/users}'
+minikube ssh -- 'sudo mkdir -p /app/.volumes/fs/{staging,public,tmp,north/users}'
 minikube ssh -- 'sudo chown -R 1000:1000 /app/.volumes/fs'
 minikube ssh -- 'sudo chmod -R 755 /app/.volumes/fs'
 
@@ -391,7 +393,7 @@ EOF
 # Paths must match nomad.config.fs.{staging,public,north_home}_external in
 # custom-values/kind.yaml. Owned by UID 1000 to match the pod runAsUser
 # (fsGroup does not apply to hostPath volumes).
-docker exec nomad-oasis-control-plane mkdir -p /app/.volumes/fs/{staging,public,north/users}
+docker exec nomad-oasis-control-plane mkdir -p /app/.volumes/fs/{staging,public,tmp,north/users}
 docker exec nomad-oasis-control-plane chown -R 1000:1000 /app/.volumes/fs
 docker exec nomad-oasis-control-plane chmod -R 755 /app/.volumes/fs
 
