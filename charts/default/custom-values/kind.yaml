@@ -58,7 +58,6 @@ nomad:
       public_external: /app/.volumes/fs/public
       north_home_external: /app/.volumes/fs/north/users
       prefix_size: 1
-      nomad: /app/nomad
       working_directory: /app
 
     mongo:

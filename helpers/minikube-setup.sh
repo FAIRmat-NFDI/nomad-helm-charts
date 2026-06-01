@@ -41,11 +41,11 @@ MINIKUBE_DISK="${MINIKUBE_DISK:-40g}"
 MINIKUBE_DRIVER="${MINIKUBE_DRIVER:-docker}"
 RELEASE_NAME="${RELEASE_NAME:-nomad-oasis}"
 NAMESPACE="${NAMESPACE:-nomad-oasis}"
-HOSTNAME="${HOSTNAME:-nomad-oasis.local}"
+NOMAD_HOSTNAME="${NOMAD_HOSTNAME:-nomad-oasis.local}"
 
 echo "=== NOMAD Oasis Minikube Setup ==="
 echo "CPUs: $MINIKUBE_CPUS, Memory: ${MINIKUBE_MEMORY}MB, Disk: $MINIKUBE_DISK"
-echo "Namespace: $NAMESPACE, Hostname: $HOSTNAME"
+echo "Namespace: $NAMESPACE, Hostname: $NOMAD_HOSTNAME"
 if $USE_TLS; then
   echo "TLS: enabled (self-signed via cert-manager)"
 fi
@@ -74,16 +74,11 @@ minikube addons enable ingress
 minikube addons enable storage-provisioner
 
 # Step 4: Create host directories for nomad data
-# These match the default hostPath volumes in values.yaml (fs.staging_external,
-# fs.public_external, fs.north_home_external). Pre-creating them with UID 1000
-# (the nomad user) avoids a PermissionError on first write, since Kubernetes
-# creates hostPath directories as root and fsGroup does not apply to hostPath.
 echo ""
 echo "Step 4: Creating data directories on minikube node..."
-minikube ssh -- 'sudo mkdir -p /app/.volumes/fs/{staging,public,north/users} /nomad'
+minikube ssh -- 'sudo mkdir -p /app/.volumes/fs/{staging,public,tmp,north/users}'
 minikube ssh -- 'sudo chown -R 1000:1000 /app/.volumes/fs'
 minikube ssh -- 'sudo chmod -R 755 /app/.volumes/fs'
-minikube ssh -- 'sudo chmod -R 777 /nomad'
 
 # Step 5: Update Helm dependencies
 echo ""
@@ -127,7 +122,7 @@ if $USE_TLS; then
   HELM_ARGS+=(-f custom-values/tls.yaml -f custom-values/minikube-selfsigned.yaml)
 fi
 if $LOCAL_KEYCLOAK; then
-  # NOMAD pods need to resolve $HOSTNAME (the Keycloak ingress host) to the
+  # NOMAD pods need to resolve $NOMAD_HOSTNAME (the Keycloak ingress host) to the
   # in-cluster nginx ClusterIP, since OIDC discovery happens server-side.
   NGINX_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
     -o jsonpath='{.spec.clusterIP}')
@@ -135,13 +130,13 @@ if $LOCAL_KEYCLOAK; then
     echo "Error: could not resolve ingress-nginx-controller ClusterIP."
     exit 1
   fi
-  echo "  Wiring local Keycloak via hostAliases ($HOSTNAME -> $NGINX_IP)"
+  echo "  Wiring local Keycloak via hostAliases ($NOMAD_HOSTNAME -> $NGINX_IP)"
   HELM_ARGS+=(
     -f custom-values/local-keycloak.yaml
     --set "nomad.app.hostAliases[0].ip=$NGINX_IP"
-    --set "nomad.app.hostAliases[0].hostnames[0]=$HOSTNAME"
+    --set "nomad.app.hostAliases[0].hostnames[0]=$NOMAD_HOSTNAME"
     --set "nomad.worker.hostAliases[0].ip=$NGINX_IP"
-    --set "nomad.worker.hostAliases[0].hostnames[0]=$HOSTNAME"
+    --set "nomad.worker.hostAliases[0].hostnames[0]=$NOMAD_HOSTNAME"
   )
 fi
 helm install "$RELEASE_NAME" . "${HELM_ARGS[@]}" -n "$NAMESPACE" --timeout 15m
@@ -167,13 +162,13 @@ MINIKUBE_IP=$(minikube ip)
 echo "To access NOMAD Oasis:"
 echo ""
 echo "  1. Add to /etc/hosts:"
-echo "     echo '$MINIKUBE_IP $HOSTNAME' | sudo tee -a /etc/hosts"
+echo "     echo '$MINIKUBE_IP $NOMAD_HOSTNAME' | sudo tee -a /etc/hosts"
 echo ""
 echo "  2. Start tunnel (in separate terminal):"
 echo "     minikube tunnel"
 echo ""
 echo "  3. Open in browser:"
-echo "     http://$HOSTNAME/nomad-oasis/gui/"
+echo "     http://$NOMAD_HOSTNAME/nomad-oasis/gui/"
 echo ""
 
 if [ "$LOCAL_KEYCLOAK" = "true" ]; then
@@ -183,7 +178,7 @@ if [ "$LOCAL_KEYCLOAK" = "true" ]; then
   echo "Once all pods are ready:"
   echo ""
   echo "  1. Open the Keycloak admin console:"
-  echo "     http://$HOSTNAME/auth/admin  (admin / admin)"
+  echo "     http://$NOMAD_HOSTNAME/auth/admin  (admin / admin)"
   echo ""
   echo "  2. Top-left realm dropdown -> 'Create realm'"
   echo ""
