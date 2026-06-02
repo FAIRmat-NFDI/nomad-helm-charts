@@ -54,22 +54,14 @@ nodes:
   - containerPort: 443
     hostPort: 443
     protocol: TCP
-  extraMounts:
-  - hostPath: /tmp/nomad-data
-    containerPath: /data/nomad
-  - hostPath: /tmp/nomad-app
-    containerPath: /nomad
 EOF
 
-# Step 3: Create host directories for nomad data
+# Step 3: Create data directories on the kind node.
 echo ""
 echo "Step 3: Creating data directories..."
-mkdir -p /tmp/nomad-data/{public,staging,north/users}
-mkdir -p /tmp/nomad-app
-docker exec "$CLUSTER_NAME-control-plane" mkdir -p /data/nomad/{public,staging,north/users}
-docker exec "$CLUSTER_NAME-control-plane" chmod -R 777 /data/nomad
-docker exec "$CLUSTER_NAME-control-plane" mkdir -p /nomad
-docker exec "$CLUSTER_NAME-control-plane" chmod -R 777 /nomad
+docker exec "$CLUSTER_NAME-control-plane" mkdir -p /app/.volumes/fs/{staging,public,tmp,north/users}
+docker exec "$CLUSTER_NAME-control-plane" chown -R 1000:1000 /app/.volumes/fs
+docker exec "$CLUSTER_NAME-control-plane" chmod -R 755 /app/.volumes/fs
 
 # Step 4: Install nginx ingress controller for Kind
 echo ""

@@ -132,6 +132,47 @@ Usage:
 {{- end }}
 
 {{/*
+initContainer that blocks until the Temporal frontend is reachable and the NOMAD
+temporal namespace is registered. Idempotent (describe-or-create loop). Closes two
+gaps observed in practice:
+  1. The NOMAD worker silently stops polling if Temporal / its namespace isn't ready
+     at boot, yet stays "healthy" (its liveness probe is only `ls /`) -> needs a gate.
+  2. The temporal subchart's own create-default-namespace job addresses the frontend
+     by a partial `.svc` name that the Go gRPC resolver may fail to complete under
+     some cluster DNS configs; the FQDN used here resolves reliably.
+Renders nothing when temporal or temporalInit is disabled.
+Usage (with root context):
+  {{- with (include "nomad.temporalNamespaceInit" .) }}
+  initContainers:
+    {{- . | nindent 8 }}
+  {{- end }}
+*/}}
+{{- define "nomad.temporalNamespaceInit" -}}
+{{- $config := .Values.nomad.config -}}
+{{- if and $config.temporal.enabled .Values.nomad.temporalInit.enabled -}}
+{{- $host := $config.temporal.host | default (printf "%s-temporal-frontend.%s.svc.cluster.local" .Release.Name .Release.Namespace) -}}
+{{- $addr := printf "%s:%v" $host (.Values.nomad.temporalInit.port | default 7233) -}}
+- name: wait-temporal-namespace
+  image: {{ .Values.nomad.temporalInit.image | quote }}
+  imagePullPolicy: {{ .Values.nomad.temporalInit.pullPolicy | default "IfNotPresent" }}
+  command: ["/bin/sh", "-ec"]
+  args:
+    - |
+      ADDR="{{ $addr }}"
+      NS="{{ $config.temporal.namespace }}"
+      echo "Ensuring Temporal namespace '$NS' at $ADDR ..."
+      i=0
+      until temporal operator namespace describe -n "$NS" --address "$ADDR" >/dev/null 2>&1; do
+        temporal operator namespace create -n "$NS" --retention {{ .Values.nomad.temporalInit.namespaceRetention | default "72h" }} --address "$ADDR" >/dev/null 2>&1 || true
+        i=$((i+1))
+        echo "  [$i] Temporal not ready / namespace '$NS' missing; retrying in 5s ..."
+        sleep 5
+      done
+      echo "Temporal namespace '$NS' is ready."
+{{- end -}}
+{{- end -}}
+
+{{/*
 Generate PVC spec for a data volume.
 Usage:
   {{- include "nomad.pvc" (dict "root" . "volumeKey" "public" "component" "public") }}

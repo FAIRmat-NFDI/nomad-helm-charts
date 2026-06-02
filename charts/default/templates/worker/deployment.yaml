@@ -47,6 +47,10 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with (include "nomad.temporalNamespaceInit" .) }}
+      initContainers:
+        {{- . | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}-worker
           {{- with .Values.nomad.worker.securityContext }}
@@ -67,8 +71,8 @@ spec:
               name: public-volume
             - mountPath: /app/.volumes/fs/staging
               name: staging-volume
-            - mountPath: /app/nomad
-              name: nomad-volume
+            - mountPath: /app/.volumes/fs/tmp
+              name: tmp-volume
             {{- with .Values.nomad.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -150,10 +154,13 @@ spec:
         - name: staging-volume
           emptyDir:
             medium: 'Memory'
+        - name: tmp-volume
+          emptyDir:
+            medium: 'Memory'
         {{- else }}
         {{- include "nomad.dataVolume" (dict "root" . "name" "staging-volume" "volumeKey" "staging" "hostPath" $config.fs.staging_external) | nindent 8 }}
+        {{- include "nomad.dataVolume" (dict "root" . "name" "tmp-volume" "volumeKey" "tmp" "hostPath" $config.fs.tmp_external) | nindent 8 }}
         {{- end }}
-        {{- include "nomad.dataVolume" (dict "root" . "name" "nomad-volume" "volumeKey" "nomad" "hostPath" $config.fs.nomad) | nindent 8 }}
 
       {{- with .Values.nomad.worker.nodeSelector }}
       nodeSelector:
