@@ -69,8 +69,6 @@ spec:
               name: public-volume
             - mountPath: /app/.volumes/fs/staging
               name: staging-volume
-            - mountPath: /nomad
-              name: nomad-volume
             {{- with .Values.nomad.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -153,7 +151,6 @@ spec:
         {{- else }}
         {{- include "nomad.dataVolume" (dict "root" . "name" "staging-volume" "volumeKey" "staging" "hostPath" $config.fs.staging_external) | nindent 8 }}
         {{- end }}
-        {{- include "nomad.dataVolume" (dict "root" . "name" "nomad-volume" "volumeKey" "nomad" "hostPath" $config.fs.nomad) | nindent 8 }}
 
       {{- with .Values.nomad.cpuworker.nodeSelector }}
       nodeSelector:

@@ -44,6 +44,10 @@ spec:
       securityContext:
         {{- . | toYaml | nindent 8 }}
       {{- end }}
+      {{- with (include "nomad.temporalNamespaceInit" .) }}
+      initContainers:
+        {{- . | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}-app
           {{- with .Values.nomad.app.securityContext }}
@@ -57,6 +61,17 @@ spec:
             - name: http
               containerPort: {{ .Values.nomad.app.service.port }}
               protocol: TCP
+          {{- with .Values.nomad.app.startupProbe }}
+          startupProbe:
+            httpGet:
+              path: "{{ $config.services.api_base_path }}/gui/index.html"
+              port: http
+            initialDelaySeconds: {{ .initialDelaySeconds | default 15 }}
+            periodSeconds: {{ .periodSeconds | default 10 }}
+            timeoutSeconds: {{ .timeoutSeconds | default 10 }}
+            failureThreshold: {{ .failureThreshold | default 60 }}
+            successThreshold: 1
+          {{- end }}
           livenessProbe:
             httpGet:
               path: "{{ $config.services.api_base_path }}/gui/index.html"
@@ -90,14 +105,10 @@ spec:
               name: public-volume
             - mountPath: /app/.volumes/fs/staging
               name: staging-volume
+            - mountPath: /app/.volumes/fs/tmp
+              name: tmp-volume
             - mountPath: /app/.volumes/fs/north/users
               name: north-home-volume
-            - mountPath: /nomad
-              name: nomad-volume
-            # /app/run is created at runtime by `nomad.cli admin run app --with-gui`
-            # to stage a base-path-rewritten copy of the GUI bundle
-            # (config.fs.working_directory + "/run/gui_configured"). An emptyDir
-            # gives the non-root pod a writable scratch dir without touching the image.
             - mountPath: /app/run
               name: app-run-volume
             {{- with .Values.nomad.volumeMounts }}
@@ -185,11 +196,14 @@ spec:
         - name: staging-volume
           emptyDir:
             medium: 'Memory'
+        - name: tmp-volume
+          emptyDir:
+            medium: 'Memory'
         {{- else }}
         {{- include "nomad.dataVolume" (dict "root" . "name" "staging-volume" "volumeKey" "staging" "hostPath" $config.fs.staging_external) | nindent 8 }}
+        {{- include "nomad.dataVolume" (dict "root" . "name" "tmp-volume" "volumeKey" "tmp" "hostPath" $config.fs.tmp_external) | nindent 8 }}
         {{- end }}
         {{- include "nomad.dataVolume" (dict "root" . "name" "north-home-volume" "volumeKey" "north-home" "hostPath" $config.fs.north_home_external) | nindent 8 }}
-        {{- include "nomad.dataVolume" (dict "root" . "name" "nomad-volume" "volumeKey" "nomad" "hostPath" $config.fs.nomad) | nindent 8 }}
       {{- with .Values.nomad.app.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

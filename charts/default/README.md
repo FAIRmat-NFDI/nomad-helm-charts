@@ -24,10 +24,10 @@ nomad:
       api_port: 80
       https: false
     fs:
-      staging_external: /data/nomad/staging   # Used for volume mounts
-      public_external: /data/nomad/public
-      north_home_external: /data/nomad/north/users
-      nomad: /nomad
+      staging_external: /app/.volumes/fs/staging   # Used for volume mounts
+      public_external: /app/.volumes/fs/public
+      tmp_external: /app/.volumes/fs/tmp
+      north_home_external: /app/.volumes/fs/north/users
     mongo:
       db_name: nomad_oasis
       port: 27017
@@ -44,8 +44,8 @@ Kubernetes deployment configuration (replicas, resources, timeouts, secrets).
 nomad:
   enabled: true
   image:
-    repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
-    tag: latest
+    repository: ghcr.io/fairmat-nfdi/nomad-distro-template
+    tag: main
 
   proxy:
     replicaCount: 1
@@ -127,12 +127,12 @@ Pin a specific version rather than using `latest`:
 ```yaml
 nomad:
   image:
-    repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
-    tag: "v1.2.2"
+    repository: ghcr.io/fairmat-nfdi/nomad-distro-template
+    tag: "v2.2.0"
 ```
 
 > [!TIP]
-> To access the latest features and improvements, we recommend updating the `nomad.image.tag` to the latest stable version. You can find the available tags in the [GitLab Registry](https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-FAIR/-/container_registry).
+> To access the latest features and improvements, we recommend updating the `nomad.image.tag` to the latest stable version. You can find the available tags in the [GitHub Container Registry](https://github.com/fairmat-nfdi/nomad-distro-template/pkgs/container/nomad-distro-template).
 
 
 ### Authentication (`nomad.config.keycloak`)
@@ -195,10 +195,10 @@ The chart supports configurable persistence: you can switch from `hostPath` to `
 
 | Volume | Mount Path | Used By | Default hostPath |
 |--------|-----------|---------|-----------------|
-| `public` | `/app/.volumes/fs/public` | All components | `/nomad/public` |
-| `staging` | `/app/.volumes/fs/staging` | All components | `/nomad/staging` |
-| `north-home` | `/app/.volumes/fs/north/users` | App only | `/nomad/north/users` |
-| `nomad` | `/nomad` | All components | `/nomad` |
+| `public` | `/app/.volumes/fs/public` | All components | `/app/.volumes/fs/public` |
+| `staging` | `/app/.volumes/fs/staging` | All components | `/app/.volumes/fs/staging` |
+| `tmp` | `/app/.volumes/fs/tmp` | App + worker | `/app/.volumes/fs/tmp` |
+| `north-home` | `/app/.volumes/fs/north/users` | App only | `/app/.volumes/fs/north/users` |
 
 ### Enabling PVC-based persistence
 
@@ -212,7 +212,7 @@ nomad:
     accessMode: ReadWriteMany     # required for multi-node access
 ```
 
-This creates 4 PVCs (one per volume) and all deployments reference them instead of `hostPath`.
+This creates up to 4 PVCs (one per volume) and all deployments reference them instead of `hostPath` (staging/tmp are skipped when `nomad.worker.storage: memory`).
 
 ### Per-volume configuration
 
@@ -236,9 +236,6 @@ nomad:
 
     north-home:
       size: 1Gi
-
-    nomad:
-      size: 10Gi
 ```
 
 **Resolution order:** per-volume value > top-level value > cluster default.
@@ -257,8 +254,6 @@ nomad:
       existingClaim: my-pre-provisioned-staging-pvc
     north-home:
       existingClaim: my-pre-provisioned-north-pvc
-    nomad:
-      existingClaim: my-pre-provisioned-nomad-pvc
 ```
 
 When `existingClaim` is set, the chart references that PVC directly and does not create one.
@@ -330,8 +325,12 @@ minikube start --cpus=6 --memory=12288
 minikube addons enable ingress
 
 # Create required directories
-minikube ssh -- 'sudo mkdir -p /data/nomad/{public,staging,north/users} && sudo chmod -R 777 /data/nomad'
-minikube ssh -- 'sudo mkdir -p /nomad && sudo chmod -R 777 /nomad'
+# Paths must match nomad.config.fs.{staging,public,north_home}_external in
+# custom-values/minikube.yaml. Owned by UID 1000 to match the pod runAsUser
+# (fsGroup does not apply to hostPath volumes).
+minikube ssh -- 'sudo mkdir -p /app/.volumes/fs/{staging,public,tmp,north/users}'
+minikube ssh -- 'sudo chown -R 1000:1000 /app/.volumes/fs'
+minikube ssh -- 'sudo chmod -R 755 /app/.volumes/fs'
 
 # Update dependencies and install
 helm dependency update ./charts/default
@@ -388,20 +387,15 @@ nodes:
   - containerPort: 443
     hostPort: 443
     protocol: TCP
-  extraMounts:
-  - hostPath: /tmp/nomad-data
-    containerPath: /data/nomad
-  - hostPath: /tmp/nomad-app
-    containerPath: /nomad
 EOF
 
-# Create data directories
-mkdir -p /tmp/nomad-data/{public,staging,north/users}
-mkdir -p /tmp/nomad-app
-docker exec nomad-oasis-control-plane mkdir -p /data/nomad/{public,staging,north/users}
-docker exec nomad-oasis-control-plane chmod -R 777 /data/nomad
-docker exec nomad-oasis-control-plane mkdir -p /nomad
-docker exec nomad-oasis-control-plane chmod -R 777 /nomad
+# Create data directories on the kind node.
+# Paths must match nomad.config.fs.{staging,public,north_home}_external in
+# custom-values/kind.yaml. Owned by UID 1000 to match the pod runAsUser
+# (fsGroup does not apply to hostPath volumes).
+docker exec nomad-oasis-control-plane mkdir -p /app/.volumes/fs/{staging,public,tmp,north/users}
+docker exec nomad-oasis-control-plane chown -R 1000:1000 /app/.volumes/fs
+docker exec nomad-oasis-control-plane chmod -R 755 /app/.volumes/fs
 
 # Install nginx ingress controller for Kind
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
@@ -624,7 +618,7 @@ nomad:
       tools:
         options:
           jupyter:
-            image: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro/jupyter:develop
+            image: ghcr.io/fairmat-nfdi/nomad-distro-template/jupyter:main
 
 jupyterhub:
   enabled: true
@@ -663,7 +657,7 @@ nomad:
       tools:
         options:
           jupyter:
-            image: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro/jupyter:develop
+            image: ghcr.io/fairmat-nfdi/nomad-distro-template/jupyter:main
           my-custom-tool:
             image: my-registry/my-tool:latest
 ```
@@ -676,18 +670,21 @@ NORTH requires a shared filesystem for user home directories:
 nomad:
   config:
     fs:
-      north_home_external: /data/nomad/north/users  # Must be accessible by all nodes
+      north_home_external: /app/.volumes/fs/north/users  # Must be accessible by all nodes
 ```
 
 For Minikube:
 ```bash
-minikube ssh -- 'sudo mkdir -p /data/nomad/north/users && sudo chmod -R 777 /data/nomad/north/users'
+minikube ssh -- 'sudo mkdir -p /app/.volumes/fs/north/users'
+minikube ssh -- 'sudo chown -R 1000:1000 /app/.volumes/fs/north'
+minikube ssh -- 'sudo chmod -R 755 /app/.volumes/fs/north'
 ```
 
 For Kind:
 ```bash
-docker exec nomad-oasis-control-plane mkdir -p /data/nomad/north/users
-docker exec nomad-oasis-control-plane chmod -R 777 /data/nomad/north/users
+docker exec nomad-oasis-control-plane mkdir -p /app/.volumes/fs/north/users
+docker exec nomad-oasis-control-plane chown -R 1000:1000 /app/.volumes/fs/north
+docker exec nomad-oasis-control-plane chmod -R 755 /app/.volumes/fs/north
 ```
 
 ## Troubleshooting
@@ -710,10 +707,10 @@ helm upgrade nomad-oasis ./charts/default -f <values-file>
 Ensure directories exist on the node:
 ```bash
 # Minikube
-minikube ssh -- 'ls -la /data/nomad/'
+minikube ssh -- 'ls -la /app/.volumes/fs/'
 
 # Kind
-docker exec nomad-oasis-control-plane ls -la /data/nomad/
+docker exec nomad-oasis-control-plane ls -la /app/.volumes/fs/
 ```
 
 ### Configuration Validation Warnings

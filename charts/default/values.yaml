@@ -40,11 +40,11 @@ nomad:
     fs:
       staging_external: /app/.volumes/fs/staging
       public_external: /app/.volumes/fs/public
+      tmp_external: /app/.volumes/fs/tmp
       north_home_external: /app/.volumes/fs/north/users
       prefix_size: 1
       archive_version_suffix: []
       working_directory: /app
-      nomad: /nomad
 
     mongo:
       db_name: nomad_oasis
@@ -74,7 +74,7 @@ nomad:
     meta:
       service: app
       homepage: https://nomad-lab.eu
-      source_url: https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-distro
+      source_url: https://github.com/fairmat-nfdi/nomad-distro-template
       maintainer_email: support@nomad-lab.eu
       footer_links: []
       beta:
@@ -147,9 +147,23 @@ nomad:
     # ui: {}
 
   image:
-    repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
-    tag: v1.4.2
+    repository: ghcr.io/fairmat-nfdi/nomad-distro-template
+    tag: main
     pullPolicy: Always
+
+  # initContainer (added to app + worker) that waits for Temporal to be reachable
+  # and ensures the configured temporal namespace is registered before NOMAD starts.
+  # Fixes two issues: the worker silently fails to poll if Temporal/its namespace
+  # isn't ready at boot (its liveness probe is only `ls /`), and reliable namespace
+  # registration via the frontend FQDN. Only used when nomad.config.temporal.enabled.
+  temporalInit:
+    enabled: true
+    # Temporal admin-tools image (ships the `temporal` CLI). Keep in step with the
+    # temporal subchart's admintools image tag.
+    image: "temporalio/admin-tools:1.29.1-tctl-1.18.4-cli-1.5.0"
+    pullPolicy: IfNotPresent
+    port: 7233
+    namespaceRetention: "72h"
 
   persistence:
     enabled: false
@@ -170,12 +184,6 @@ nomad:
 
     north-home:
       size: 1Gi
-      storageClass: ""
-      accessMode: ""
-      existingClaim: ""
-
-    nomad:
-      size: 10Gi
       storageClass: ""
       accessMode: ""
       existingClaim: ""
@@ -306,14 +314,26 @@ nomad:
     hostAliases: []
     podAnnotations: {}
     podLabels: {}
+    # A startupProbe gates liveness/readiness during the (slow) plugin-load + GUI
+    # staging phase, giving up to ~10 min. Once it passes, readiness/liveness take
+    # over immediately (initialDelaySeconds: 0), so the pod is marked Ready within
+    # seconds of actually serving instead of waiting out a fixed delay. Set
+    # startupProbe to null/{} to fall back to plain liveness/readiness.
+    startupProbe:
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 10
+      failureThreshold: 60
     livenessProbe:
-      initialDelaySeconds: 420
+      initialDelaySeconds: 0
       periodSeconds: 15
-      timeoutSeconds: 75
+      timeoutSeconds: 10
+      failureThreshold: 3
     readinessProbe:
-      initialDelaySeconds: 420
-      periodSeconds: 15
-      timeoutSeconds: 75
+      initialDelaySeconds: 0
+      periodSeconds: 10
+      timeoutSeconds: 10
+      failureThreshold: 3
 
   worker:
     replicaCount: 1
@@ -359,18 +379,21 @@ nomad:
     affinity: {}
     podAnnotations: {}
     podLabels: {}
+    # The worker's probe is just `ls /` (it has no HTTP health endpoint), and the
+    # wait-temporal-namespace initContainer already gates startup on Temporal being
+    # ready — so the long 300s initial delay is no longer needed.
     livenessProbe:
       failureThreshold: 3
-      initialDelaySeconds: 300
+      initialDelaySeconds: 30
       periodSeconds: 120
       successThreshold: 1
       timeoutSeconds: 60
     readinessProbe:
       failureThreshold: 3
-      initialDelaySeconds: 300
-      periodSeconds: 120
+      initialDelaySeconds: 30
+      periodSeconds: 10
       successThreshold: 1
-      timeoutSeconds: 60
+      timeoutSeconds: 10
 
   gpuworker:
     replicaCount: 0
@@ -433,31 +456,6 @@ nomad:
       periodSeconds: 5
       successThreshold: 1
       timeoutSeconds: 1
-
-  adminconsole:
-    enabled: false
-    replicaCount: 1
-    podSecurityContext:
-      fsGroup: 1000
-    securityContext:
-      runAsNonRoot: true
-      runAsUser: 1000
-    resources: {}
-    volumes: []
-    volumeMounts: []
-    nodeSelector: {}
-    tolerations: []
-    affinity: {}
-    podAnnotations: {}
-    podLabels: {}
-    livenessProbe:
-      initialDelaySeconds: 30
-      periodSeconds: 120
-      timeoutSeconds: 60
-    readinessProbe:
-      initialDelaySeconds: 30
-      periodSeconds: 120
-      timeoutSeconds: 60
 
   ingress:
     enabled: false
@@ -734,7 +732,13 @@ temporal:
       publicClient:
         hostPort: "nomad-oasis-temporal-frontend:7233"
       namespaces:
-        create: true
+        # The subchart's create-default-namespace job addresses the frontend by a
+        # partial `.svc` name, which the Go temporal CLI's gRPC resolver fails to
+        # complete under some cluster DNS configs (ndots + extra search domains),
+        # leaving the namespace unregistered (-> NOMAD "Namespace not found").
+        # We register it reliably from the app/worker initContainer instead
+        # (nomad.temporalInit / "nomad.temporalNamespaceInit").
+        create: false
       persistence:
         default:
           driver: sql
