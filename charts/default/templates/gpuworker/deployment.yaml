@@ -56,8 +56,8 @@ spec:
           image: "{{ .Values.nomad.image.repository }}:{{ .Values.nomad.image.tag | default .Chart.AppVersion }}"
           {{- end }}
           imagePullPolicy: {{ .Values.nomad.image.pullPolicy }}
-          workingDir: {{ $config.services.workingdir | default "/app" }}
           {{- with .Values.nomad.gpuworker.resources }}
+          workingDir: {{ $config.services.workingdir | default "/app" }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
