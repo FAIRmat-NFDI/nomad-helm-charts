@@ -35,7 +35,6 @@ nomad:
       https: false
       upload_limit: 10
       admin_user_id: ""
-      workingdir: /app
 
     fs:
       staging_external: /app/.volumes/fs/staging
