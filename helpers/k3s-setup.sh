@@ -112,6 +112,11 @@ echo "Step 7: Installing NOMAD Oasis chart..."
 # only take effect when NOMAD_HOSTNAME is set to a custom host.
 HELM_ARGS=(
   -f custom-values/minikube.yaml
+  # k3s-specific overlay: k3s enforces NetworkPolicies (via its embedded
+  # kube-router controller), unlike minikube/kind. k3s.yaml disables the z2jh
+  # policies that would otherwise block the NOMAD app/worker from reaching the
+  # hub API (Errno 111 / connection refused).
+  -f custom-values/k3s.yaml
   --set "nomad.config.services.api_host=$NOMAD_HOSTNAME"
   --set "jupyterhub.hub.config.GenericOAuthenticator.oauth_callback_url=http://$NOMAD_HOSTNAME/nomad-oasis/north/hub/oauth_callback"
   --set "jupyterhub.ingress.hosts[0]=$NOMAD_HOSTNAME"
