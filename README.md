@@ -8,10 +8,11 @@ Helm charts for deploying [NOMAD](https://nomad-lab.eu/) on Kubernetes.
 - [Helm](https://helm.sh/docs/intro/install/) >= 3.x
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - For local production/development, a Kubernetes cluster:
+  - [k3s](https://minikube.sigs.k8s.io/docs/start/)
   - [Minikube](https://minikube.sigs.k8s.io/docs/start/)
   - [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
 - For cloud deployment, a Kubernetes cluster:
-  - [GKE](https://cloud.google.com/kubernetes-engine) [under development]
+  - [GKE](https://cloud.google.com/kubernetes-engine)
   - [EKS](https://aws.amazon.com/eks/) [under development]
 
 ## Repository Structure
@@ -61,6 +62,12 @@ See [charts/default/values.yaml](charts/default/values.yaml) for all options, or
 Clone this repository and install directly from the charts directory.
 
 ## Quick Start
+
+### Using k3s
+
+```bash
+./helpers/k3s-setup.sh
+```
 
 ### Using Minikube
 
