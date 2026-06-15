@@ -282,12 +282,12 @@ nomad:
     podLabels: {}
     livenessProbe:
       initialDelaySeconds: 90
-      periodSeconds: 10
-      timeoutSeconds: 70
+      periodSeconds: 15
+      timeoutSeconds: 10
     readinessProbe:
       initialDelaySeconds: 90
-      periodSeconds: 3
-      timeoutSeconds: 63
+      periodSeconds: 10
+      timeoutSeconds: 5
 
   app:
     replicaCount: 1
