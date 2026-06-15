@@ -8,7 +8,7 @@
 #   1. An Autopilot cluster with kubectl configured.
 #   2. A global static IP:  gcloud compute addresses create nomad-ip --global
 #   3. Filestore CSI driver (enabled by default on Autopilot) AND the Cloud Filestore
-#      API (for the ReadWriteMany volumes):  gcloud services enable file.googleapis.com
+#      API (for the ReadWriteMany volumes): gcloud services enable file.googleapis.com
 #
 # This file is HTTP-only. See the "Enabling HTTPS" section of the README to add
 # a Google-managed certificate.
@@ -19,8 +19,8 @@ nomad:
       # Must be a DNS name -- a Kubernetes Ingress rejects a bare IP in its host
       # rule. Use a domain whose DNS A-record points to the static IP, or, for a
       # quick test without a domain, an nip.io name that resolves to the IP, e.g.
-      # 34.120.0.1.nip.io  (the static IP with ".nip.io" appended).
-      api_host: <DOMAIN_OR_IP.nip.io>
+      # <IP>.nip.io (the static IP with ".nip.io" appended).
+      api_host: <DOMAIN>
       api_base_path: /nomad-oasis
       https: false   # set true after enabling HTTPS (see README)
 
@@ -49,8 +49,24 @@ nomad:
     enabled: true
     className: "gce"
     annotations:
+      # GKE's ingress controller (glbc) selects ingresses via THIS annotation and
+      # ignores spec.ingressClassName. The chart only emits the annotation on k8s
+      # <1.18, so on modern clusters glbc never claims the ingress and no load
+      # balancer is ever created -- set it explicitly here. (className stays "gce"
+      # so the secondary ingress-api.yaml template remains disabled.)
+      kubernetes.io/ingress.class: "gce"
       kubernetes.io/ingress.global-static-ip-name: "nomad-oasis-ip"
     tls: []
+
+  # The proxy's default readiness probe sets timeoutSeconds (63) > periodSeconds (3).
+  # Plain kubelet tolerates that, but the GCE load balancer derives its backend health
+  # check from this probe and rejects it ("Error 400: TimeoutSec should be less than
+  # checkIntervalSec"), which blocks the whole LB. Give it a probe where timeout < period.
+  proxy:
+    readinessProbe:
+      initialDelaySeconds: 90
+      periodSeconds: 10
+      timeoutSeconds: 5
 
 # Databases use ReadWriteOnce Persistent Disk.
 mongodb:
@@ -77,7 +93,7 @@ elasticsearch:
     storageClassName: standard-rwo
     resources:
       requests:
-        storage: 30Gi
+        storage: 20Gi
 
 postgresql:
   primary:
