@@ -7,6 +7,7 @@ Ready-to-use Helm values files for deploying NOMAD Oasis on different environmen
 | [minikube.yaml](minikube.yaml) | Local (Minikube) | nginx   | hostPath  | cert-manager      |
 | [kind.yaml](kind.yaml)         | Local (Kind)     | nginx   | hostPath  | cert-manager      |
 | [aws.yaml](aws.yaml)           | AWS EKS          | ALB     | EFS + EBS | ACM (AWS-managed) |
+| [gke.yaml](gke.yaml)           | Google GKE       | GCE LB  | Filestore + PD | Google-managed certs |
 | [tls.yaml](tls.yaml)           | Self-hosted overlay | any  | —         | cert-manager      |
 
 ---
@@ -200,3 +201,82 @@ jupyterhub:
 ACM handles certificate provisioning and renewal automatically — no cert-manager needed.
 
 > **Note:** Both the NOMAD and JupyterHub ingresses share the same ALB via `group.name: "nomad-oasis"`, so one ACM certificate covers both. Use a wildcard cert (`*.your-domain.com`) or a cert with both hostnames as SANs if they are on different subdomains.
+
+---
+
+## Cloud-Hosted (Google GKE)
+
+Uses the built-in **GCE ingress** (a Google Cloud HTTP Load Balancer) with a pre-reserved global static IP. Shared NOMAD data volumes are backed by **Filestore** (ReadWriteMany); databases use **Persistent Disk** (ReadWriteOnce). `gke.yaml` ships HTTP-only — see [Enabling HTTPS](#enabling-https-google-managed-certificate) to add a Google-managed certificate.
+
+> The `public`, `staging`, and `tmp` volumes are mounted read-write by both the `app` and `worker` pods at the same time, so they **must** be ReadWriteMany. On GKE that means Filestore (`standard-rwx`) — the equivalent of EFS on AWS. `standard-rwo` Persistent Disk cannot be shared and will leave the second pod stuck `ContainerCreating`.
+
+### Prerequisites
+
+Before using `gke.yaml`, the following must be in place:
+
+1. **GKE Autopilot cluster** with `kubectl` access configured
+
+   ```bash
+   gcloud container clusters get-credentials <cluster-name> --region <region>
+   ```
+
+2. **A global static IP** for the load balancer
+
+   ```bash
+   gcloud compute addresses create nomad-oasis-ip --global
+   gcloud compute addresses describe nomad-oasis-ip --global --format='value(address)'
+   ```
+
+   The annotation `kubernetes.io/ingress.global-static-ip-name` in `gke.yaml` must match the **name** (`nomad-oasis-ip`), not the address.
+
+3. **Cloud Filestore API enabled**, providing the `standard-rwx` StorageClass for the shared RWX volumes. The Filestore CSI *driver* ships with Autopilot, but the project-level API must be enabled explicitly — otherwise the `public`/`staging`/`tmp` PVCs stay `Pending` with `Error 403: ... SERVICE_DISABLED` and the `app`/`worker` pods never schedule.
+
+   ```bash
+   gcloud services enable file.googleapis.com
+   kubectl get storageclass standard-rwx standard-rwo
+   ```
+
+4. **`standard-rwo` Persistent Disk StorageClass** (available by default on GKE) for MongoDB, Elasticsearch, and PostgreSQL.
+
+> **Filestore cost note:** Filestore enforces a minimum provisioned capacity per instance, so the small RWX volumes are expensive when each is its own `standard-rwx` instance. For production, point `nomad.persistence.storageClass` at a Filestore **multishare** (Enterprise) StorageClass so all shared volumes pack into a single instance — see the [GKE Filestore multishare docs](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/filestore-multishares).
+
+### Configuration
+
+Copy `gke.yaml` and customize:
+
+```bash
+cp charts/default/custom-values/gke.yaml my-gke-values.yaml
+```
+
+Update the following fields:
+
+- `nomad.config.services.api_host` — a **DNS name**, not a bare IP. A Kubernetes Ingress rejects an IP address in its host rule (`spec.rules[0].host: ... must be a DNS name, not an IP address`). Use a domain whose DNS A-record points to the static IP, or, to test without owning a domain, an [nip.io](https://nip.io) name that resolves to the IP — e.g. if the static IP is `34.120.0.1`, set `api_host: 34.120.0.1.nip.io`.
+- `nomad.ingress.annotations."kubernetes.io/ingress.global-static-ip-name"` — the **name** of your reserved static IP (default `nomad-oasis-ip`)
+- `mongodb.auth.rootPassword` — change to a secure password
+
+> **Autopilot note:** `gke.yaml` disables the Elasticsearch `configure-sysctl` init container (`elasticsearch.sysctlInitContainer.enabled: false`) and sets `node.store.allow_mmap: false`, because Autopilot forbids the privileged container that would otherwise raise `vm.max_map_count`. Leave these in place on Autopilot.
+
+### Install
+
+```bash
+helm dependency update ./charts/default
+helm install nomad-oasis ./charts/default \
+  -f my-gke-values.yaml \
+  --timeout 15m
+```
+
+The Google Cloud Load Balancer takes a few minutes to provision. Once ready, its address equals the reserved static IP:
+
+```bash
+kubectl get ingress nomad-oasis -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+```
+
+Browse to `http://<api_host>/nomad-oasis/gui/` (the DNS name / nip.io host you set) to confirm NOMAD Oasis is up. If you used your own domain, create a DNS A-record pointing it at the static IP. Note that the Google Cloud Load Balancer can take 5–10 minutes after creation before it starts serving traffic.
+
+### Enabling HTTPS (Google-managed certificate)
+
+TODO
+
+### Enabling North (JupyterHub)
+
+North is disabled by default. To enable it, set `nomad.config.north.enabled: true` and `jupyterhub.enabled: true`, and set the JupyterHub OAuth callback URL to your external host (`http://<host>/nomad-oasis/north/hub/oauth_callback`, `https://` once TLS is on). The NOMAD proxy routes `/nomad-oasis/north/` internally, so **no extra ingress or second static IP is needed** — everything stays behind the single GCE load balancer.

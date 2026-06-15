@@ -1,0 +1,77 @@
+# GKE (Google Kubernetes Engine) deployment values for NOMAD Oasis.
+#
+# Target: a GKE Autopilot cluster. Uses the built-in GCE ingress (Google Cloud
+# HTTP Load Balancer) with a pre-reserved global static IP, and Filestore
+# (ReadWriteMany) for the NOMAD data volumes shared by the app and worker pods.
+#
+# Prerequisites (full details in custom-values/README.md):
+#   1. An Autopilot cluster with kubectl configured.
+#   2. A global static IP:  gcloud compute addresses create nomad-ip --global
+#   3. Filestore CSI driver (enabled by default on Autopilot) AND the Cloud Filestore
+#      API (for the ReadWriteMany volumes):  gcloud services enable file.googleapis.com
+#
+# This file is HTTP-only. See the "Enabling HTTPS" section of the README to add
+# a Google-managed certificate.
+
+nomad:
+  config:
+    services:
+      # Must be a DNS name -- a Kubernetes Ingress rejects a bare IP in its host
+      # rule. Use a domain whose DNS A-record points to the static IP, or, for a
+      # quick test without a domain, an nip.io name that resolves to the IP, e.g.
+      # 34.120.0.1.nip.io  (the static IP with ".nip.io" appended).
+      api_host: <DOMAIN_OR_IP.nip.io>
+      api_base_path: /nomad-oasis
+      https: false   # set true after enabling HTTPS (see README)
+
+  # Shared NOMAD data volumes (public, staging, tmp) are mounted concurrently by
+  # the app and worker pods, so they require ReadWriteMany -> Filestore.
+  persistence:
+    enabled: true
+    storageClass: standard-rwx     # Filestore (RWX). See README for a cheaper multishare option.
+    accessMode: ReadWriteMany
+    # north-home is only mounted by the app pod -> ReadWriteOnce Persistent Disk is enough.
+    north-home:
+      storageClass: standard-rwo
+      accessMode: ReadWriteOnce
+
+  # GCE ingress = Google Cloud HTTP Load Balancer.
+  # Reserve the IP first:  gcloud compute addresses create nomad-oasis-ip --global
+  ingress:
+    enabled: true
+    className: "gce"
+    annotations:
+      kubernetes.io/ingress.global-static-ip-name: "nomad-oasis-ip"
+    tls: []
+
+# Databases use ReadWriteOnce Persistent Disk.
+mongodb:
+  auth:
+    enabled: true
+    rootPassword: "changeme"   # change to a secure password
+  persistence:
+    storageClass: standard-rwo
+
+elasticsearch:
+  clusterHealthCheckParams: "wait_for_status=yellow&timeout=1s"
+  # Autopilot forbids privileged containers, so the init container that raises
+  # vm.max_map_count cannot run. Disable it and switch Elasticsearch off mmapfs
+  # so it does not trip the vm.max_map_count bootstrap check.
+  sysctlInitContainer:
+    enabled: false
+  esConfig:
+    elasticsearch.yml: |
+      node.store.allow_mmap: false
+  persistence:
+    enabled: true
+    storageClass: standard-rwo
+  volumeClaimTemplate:
+    storageClassName: standard-rwo
+    resources:
+      requests:
+        storage: 30Gi
+
+postgresql:
+  primary:
+    persistence:
+      storageClass: standard-rwo

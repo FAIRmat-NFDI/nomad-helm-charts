@@ -1,4 +1,10 @@
-{{- if and .Values.nomad.ingress.enabled (ne .Values.nomad.ingress.className "alb") -}}
+{{/*
+The separate API ingress only exists to apply nginx-specific per-path rate
+limiting (limitConnectionsApi). It is skipped for L7 load balancers that turn
+each Ingress resource into its own load balancer (alb, gce) — there the main
+ingress's api_base_path Prefix rule already covers the /api path.
+*/}}
+{{- if and .Values.nomad.ingress.enabled (ne .Values.nomad.ingress.className "alb") (ne .Values.nomad.ingress.className "gce") -}}
 {{- $config := .Values.nomad.config -}}
 {{- $fullName := include "nomad.fullname" . -}}
 {{- $svcPort := .Values.nomad.service.port -}}
