@@ -175,7 +175,7 @@ spec:
                   name: {{ include "nomad.secretName.north" . }}
                   key: {{ .Values.nomad.secrets.north.hubServiceApiToken.key }}
             {{- end }}
-          command: ["python", "-m", "nomad.cli", "admin", "run", "app", "--log-config", "/app/uvicorn.log.conf", "--with-gui", "--host", "0.0.0.0"]
+          command: ["python", "-m", "nomad.cli", "admin", "run", "app", "--log-config", "/app/uvicorn.log.conf", "--workers=1", "--with-gui", "--host", "0.0.0.0"]
       volumes:
         {{- with .Values.nomad.volumes }}
         {{- toYaml . | nindent 8 }}
