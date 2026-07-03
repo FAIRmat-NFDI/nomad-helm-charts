@@ -59,20 +59,10 @@ spec:
           {{- end }}
           image: "{{ .Values.nomad.image.repository }}:{{ .Values.nomad.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.nomad.image.pullPolicy }}
-          {{- if .Values.nomad.config.temporal.prometheus_bind_address }}
-          {{- $address := toString .Values.nomad.config.temporal.prometheus_bind_address }}
-          {{- $port := "9000" }}
-          {{- if contains ":" $address }}
-            {{- $parts := splitList ":" $address }}
-            {{- $port = last $parts | default "9000" }}
-          {{- else if not (contains "." $address) }}
-            {{- if and (ne $address "localhost") (ne $address "") }}
-              {{- $port = $address }}
-            {{- end }}
-          {{- end }}
+          {{- if .Values.nomad.config.temporal.prometheus_bind_address.enabled }}
           ports:
             - name: metrics
-              containerPort: {{ $port }}
+              containerPort: {{ .Values.nomad.config.temporal.prometheus_bind_address.port | default 9000 }}
               protocol: TCP
           {{- end }}
           workingDir: {{ $config.fs.working_directory | default "/app" }}

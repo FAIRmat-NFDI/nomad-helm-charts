@@ -118,8 +118,8 @@ data:
 {{- if $config.temporal.processing_timeouts }}
 {{- $_ := set $temporal "processing_timeouts" $config.temporal.processing_timeouts }}
 {{- end }}
-{{- if $config.temporal.prometheus_bind_address }}
-{{- $_ := set $temporal "prometheus_bind_address" $config.temporal.prometheus_bind_address }}
+{{- if $config.temporal.prometheus_bind_address.enabled }}
+{{- $_ := set $temporal "prometheus_bind_address" (printf "%s:%v" $config.temporal.prometheus_bind_address.host $config.temporal.prometheus_bind_address.port) }}
 {{- end }}
 {{- if $config.temporal.internal_worker }}
 {{- $_ := set $temporal "internal_worker" $config.temporal.internal_worker }}
