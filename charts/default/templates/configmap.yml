@@ -192,6 +192,10 @@ data:
 {{- $_ := set $computed "oasis" $config.oasis }}
 {{- end }}
 
+{{- if $config.telemetry }}
+{{- $_ := set $computed "telemetry" $config.telemetry }}
+{{- end }}
+
 {{- if $config.ui }}
 {{- $_ := set $computed "ui" $config.ui }}
 {{- end }}

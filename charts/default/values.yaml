@@ -140,6 +140,15 @@ nomad:
       is_oasis: true
       uses_central_user_management: true
 
+    telemetry:
+      tracing:
+        enabled: false
+        service_name: nomad-oasis
+        otlp_endpoint: ""
+        sampler_ratio: 0.1
+      metrics:
+        api_prometheus_enabled: false
+
     # plugins: {}
     # normalize: {}
     # archive: {}
