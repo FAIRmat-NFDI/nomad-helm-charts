@@ -41,6 +41,7 @@ nomad:
       public_external: /app/.volumes/fs/public
       tmp_external: /app/.volumes/fs/tmp
       north_home_external: /app/.volumes/fs/north/users
+      actions: /app/.volumes/fs/actions
       prefix_size: 1
       archive_version_suffix: []
       working_directory: /app
@@ -69,6 +70,10 @@ nomad:
       host: ""
       graceful_shutdown_timeout: null
       processing_timeouts: {}
+      prometheus_bind_address: ""
+      internal_worker: {}
+      cpu_worker: {}
+      gpu_worker: {}
 
     meta:
       service: app
@@ -188,6 +193,12 @@ nomad:
       existingClaim: ""
 
     tmp:
+      size: 10Gi
+      storageClass: ""
+      accessMode: ""
+      existingClaim: ""
+
+    actions:
       size: 10Gi
       storageClass: ""
       accessMode: ""

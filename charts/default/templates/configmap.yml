@@ -44,6 +44,9 @@ data:
     "prefix_size" $config.fs.prefix_size
     "working_directory" $config.fs.working_directory
 }}
+{{- if $config.fs.actions }}
+{{- $_ := set $fs "actions" $config.fs.actions }}
+{{- end }}
 {{- if $config.fs.archive_version_suffix }}
 {{- $_ := set $fs "archive_version_suffix" $config.fs.archive_version_suffix }}
 {{- end }}
@@ -116,6 +119,18 @@ data:
 {{- end }}
 {{- if $config.temporal.processing_timeouts }}
 {{- $_ := set $temporal "processing_timeouts" $config.temporal.processing_timeouts }}
+{{- end }}
+{{- if $config.temporal.prometheus_bind_address }}
+{{- $_ := set $temporal "prometheus_bind_address" $config.temporal.prometheus_bind_address }}
+{{- end }}
+{{- if $config.temporal.internal_worker }}
+{{- $_ := set $temporal "internal_worker" $config.temporal.internal_worker }}
+{{- end }}
+{{- if $config.temporal.cpu_worker }}
+{{- $_ := set $temporal "cpu_worker" $config.temporal.cpu_worker }}
+{{- end }}
+{{- if $config.temporal.gpu_worker }}
+{{- $_ := set $temporal "gpu_worker" $config.temporal.gpu_worker }}
 {{- end }}
 {{- $_ := set $computed "temporal" $temporal }}
 {{- end }}
