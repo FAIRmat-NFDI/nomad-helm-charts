@@ -41,12 +41,10 @@ data:
     "staging_external" $config.fs.staging_external
     "public_external" $config.fs.public_external
     "north_home_external" $config.fs.north_home_external
+    "actions" $config.fs.actions_external
     "prefix_size" $config.fs.prefix_size
     "working_directory" $config.fs.working_directory
 }}
-{{- if $config.fs.actions }}
-{{- $_ := set $fs "actions" $config.fs.actions }}
-{{- end }}
 {{- if $config.fs.archive_version_suffix }}
 {{- $_ := set $fs "archive_version_suffix" $config.fs.archive_version_suffix }}
 {{- end }}

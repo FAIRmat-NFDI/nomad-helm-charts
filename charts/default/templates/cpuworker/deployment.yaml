@@ -164,7 +164,7 @@ spec:
         {{- else }}
         {{- include "nomad.dataVolume" (dict "root" . "name" "staging-volume" "volumeKey" "staging" "hostPath" $config.fs.staging_external) | nindent 8 }}
         {{- end }}
-        {{- include "nomad.dataVolume" (dict "root" . "name" "actions-volume" "volumeKey" "actions" "hostPath" $config.fs.actions) | nindent 8 }}
+        {{- include "nomad.dataVolume" (dict "root" . "name" "actions-volume" "volumeKey" "actions" "hostPath" $config.fs.actions_external) | nindent 8 }}
 
       {{- with .Values.nomad.cpuworker.nodeSelector }}
       nodeSelector:

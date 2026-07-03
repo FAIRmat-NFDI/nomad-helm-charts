@@ -206,7 +206,7 @@ spec:
         {{- include "nomad.dataVolume" (dict "root" . "name" "tmp-volume" "volumeKey" "tmp" "hostPath" $config.fs.tmp_external) | nindent 8 }}
         {{- end }}
         {{- include "nomad.dataVolume" (dict "root" . "name" "north-home-volume" "volumeKey" "north-home" "hostPath" $config.fs.north_home_external) | nindent 8 }}
-        {{- include "nomad.dataVolume" (dict "root" . "name" "actions-volume" "volumeKey" "actions" "hostPath" $config.fs.actions) | nindent 8 }}
+        {{- include "nomad.dataVolume" (dict "root" . "name" "actions-volume" "volumeKey" "actions" "hostPath" $config.fs.actions_external) | nindent 8 }}
       {{- with .Values.nomad.app.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
