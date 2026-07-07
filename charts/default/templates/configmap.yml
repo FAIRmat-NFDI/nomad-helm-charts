@@ -41,6 +41,7 @@ data:
     "staging_external" $config.fs.staging_external
     "public_external" $config.fs.public_external
     "north_home_external" $config.fs.north_home_external
+    "actions_external" $config.fs.actions_external
     "prefix_size" $config.fs.prefix_size
     "working_directory" $config.fs.working_directory
 }}
@@ -116,6 +117,18 @@ data:
 {{- end }}
 {{- if $config.temporal.processing_timeouts }}
 {{- $_ := set $temporal "processing_timeouts" $config.temporal.processing_timeouts }}
+{{- end }}
+{{- if $config.temporal.prometheus_bind_address.enabled }}
+{{- $_ := set $temporal "prometheus_bind_address" (printf "%s:%v" $config.temporal.prometheus_bind_address.host $config.temporal.prometheus_bind_address.port) }}
+{{- end }}
+{{- if $config.temporal.internal_worker }}
+{{- $_ := set $temporal "internal_worker" $config.temporal.internal_worker }}
+{{- end }}
+{{- if $config.temporal.cpu_worker }}
+{{- $_ := set $temporal "cpu_worker" $config.temporal.cpu_worker }}
+{{- end }}
+{{- if $config.temporal.gpu_worker }}
+{{- $_ := set $temporal "gpu_worker" $config.temporal.gpu_worker }}
 {{- end }}
 {{- $_ := set $computed "temporal" $temporal }}
 {{- end }}

@@ -59,6 +59,12 @@ spec:
           {{- end }}
           image: "{{ .Values.nomad.image.repository }}:{{ .Values.nomad.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.nomad.image.pullPolicy }}
+          {{- if .Values.nomad.config.temporal.prometheus_bind_address.enabled }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.nomad.config.temporal.prometheus_bind_address.port | default 9000 }}
+              protocol: TCP
+          {{- end }}
           workingDir: {{ $config.fs.working_directory | default "/app" }}
           {{- with .Values.nomad.worker.resources }}
           resources:
@@ -74,6 +80,8 @@ spec:
               name: staging-volume
             - mountPath: /app/.volumes/fs/tmp
               name: tmp-volume
+            - mountPath: /app/.volumes/fs/actions
+              name: actions-volume
             {{- with .Values.nomad.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -114,26 +122,21 @@ spec:
                   key: {{ .Values.nomad.secrets.keycloak.password.key }}
             {{- end }}
 
-          # See https://keithtenzer.com/temporal/Deploying_Temporal_Worker_on_Kubernetes/#liveliness-and-readiness-probes
-          # for rationale on using 'ls /' as a liveness/readiness probe for Temporal workers.
+          # Liveness and readiness probes check the Python Temporal worker's HTTP health server.
           command: ["python", "-m", "nomad.cli", "admin", "run", "action-internal-worker"]
           livenessProbe:
-            exec:
-              command:
-              - /bin/bash
-              - -ec
-              - "ls /"
+            httpGet:
+              path: /health
+              port: 8080
             initialDelaySeconds: {{ .Values.nomad.worker.livenessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.nomad.worker.livenessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.nomad.worker.livenessProbe.timeoutSeconds }}
             failureThreshold: {{ .Values.nomad.worker.livenessProbe.failureThreshold }}
             successThreshold: {{ .Values.nomad.worker.livenessProbe.successThreshold | default 1 }}
           readinessProbe:
-            exec:
-              command:
-              - /bin/bash
-              - -ec
-              - "ls /"
+            httpGet:
+              path: /health
+              port: 8080
             initialDelaySeconds: {{ .Values.nomad.worker.readinessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.nomad.worker.readinessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.nomad.worker.readinessProbe.timeoutSeconds }}
@@ -162,6 +165,7 @@ spec:
         {{- include "nomad.dataVolume" (dict "root" . "name" "staging-volume" "volumeKey" "staging" "hostPath" $config.fs.staging_external) | nindent 8 }}
         {{- include "nomad.dataVolume" (dict "root" . "name" "tmp-volume" "volumeKey" "tmp" "hostPath" $config.fs.tmp_external) | nindent 8 }}
         {{- end }}
+        {{- include "nomad.dataVolume" (dict "root" . "name" "actions-volume" "volumeKey" "actions" "hostPath" $config.fs.actions_external) | nindent 8 }}
 
       {{- with .Values.nomad.worker.nodeSelector }}
       nodeSelector:
