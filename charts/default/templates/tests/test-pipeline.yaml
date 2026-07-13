@@ -1,0 +1,327 @@
+{{- if and .Values.nomad.enabled .Values.nomad.tests.enabled -}}
+{{- $config := .Values.nomad.config -}}
+{{- $tests := .Values.nomad.tests -}}
+{{- $image := $tests.image | default .Values.nomad.image -}}
+{{- $appBase := printf "http://%s-proxy:%v%s" (include "nomad.fullname" .) .Values.nomad.proxy.service.port $config.services.api_base_path -}}
+{{- $apiBase := printf "%s/api/v1" $appBase -}}
+{{- $extSample := or $tests.upload.existingSampleSecret $tests.upload.existingSampleConfigMap -}}
+{{- $samplePath := ternary (printf "/sample/%s" $tests.upload.sampleFileName) (printf "/scripts/%s" $tests.upload.sampleFileName) (not (not $extSample)) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nomad.fullname" . }}-test
+  labels:
+    {{- include "nomad.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+data:
+  {{- if not $extSample }}
+  # A minimal NOMAD archive. The archive parser (parsers/archive) matches any
+  # *archive.json file and, with only a `metadata` block, produces a valid empty
+  # entry that always processes to SUCCESS on a vanilla distro. For a binary
+  # sample (e.g. a local .zip), set nomad.tests.upload.existingSampleConfigMap
+  # or existingSampleSecret instead of this inline content.
+  {{ $tests.upload.sampleFileName }}: |
+{{ $tests.upload.sampleFileContent | indent 4 }}
+  {{- end }}
+  run-tests.py: |
+    import os, sys, json, time, urllib.request, urllib.error, urllib.parse
+
+    API = os.environ["API_BASE"].rstrip("/")
+    APP = os.environ["APP_BASE"].rstrip("/")
+    fails = []
+
+    def req(method, path, data=None, headers=None, token=None, base=None):
+        h = dict(headers or {})
+        if token:
+            h["Authorization"] = "Bearer " + token
+        r = urllib.request.Request((base or API) + path, data=data, method=method, headers=h)
+        try:
+            resp = urllib.request.urlopen(r, timeout=30)
+            body = resp.read()
+            return resp.status, (json.loads(body) if body else {})
+        except urllib.error.HTTPError as e:
+            body = e.read()
+            try:
+                return e.code, json.loads(body)
+            except Exception:
+                return e.code, {"raw": body.decode(errors="replace")[:300]}
+        except Exception as e:
+            return 0, {"error": str(e)}
+
+    def env_list(name):
+        return [x for x in os.environ.get(name, "").split(",") if x]
+
+    def check(cond, msg):
+        print(("  PASS  " if cond else "  FAIL  ") + msg, flush=True)
+        if not cond:
+            fails.append(msg)
+
+    print("Target API: " + API, flush=True)
+    print("== Tier 1: component & plugin-entry-point health (no credentials) ==", flush=True)
+    st, info = req("GET", "/info")
+    check(st == 200, "GET /info -> %s (app reachable via proxy)" % st)
+    parsers = info.get("parsers", []) or []
+    normalizers = info.get("normalizers", []) or []
+    pkgs = [p.get("name") for p in (info.get("plugin_packages") or [])]
+    check(len(parsers) > 0, "parsers loaded (%d)" % len(parsers))
+    check(len(normalizers) > 0, "normalizers loaded (%d)" % len(normalizers))
+    for want in env_list("EXPECT_PARSERS"):
+        check(want in parsers, "parser entry point loaded: %s" % want)
+    for want in env_list("EXPECT_NORMALIZERS"):
+        check(want in normalizers, "normalizer entry point loaded: %s" % want)
+    for want in env_list("EXPECT_PLUGINS"):
+        check(want in pkgs, "plugin package installed: %s" % want)
+
+    st, _ = req("GET", "/entries?page_size=1")
+    check(st == 200, "GET /entries -> %s (Elasticsearch reachable)" % st)
+
+    # App entry points (GUI search apps) — anonymous read is allowed by default.
+    want_apps = env_list("EXPECT_APPS")
+    if want_apps:
+        st, resp = req("GET", "/apps/entry-points")
+        ids = set()
+        for a in (resp.get("data") or []):
+            ids.add(a.get("id"))
+            ids.add(a.get("path"))
+        check(st == 200, "GET /apps/entry-points -> %s" % st)
+        for want in want_apps:
+            check(want in ids, "app entry point loaded: %s" % want)
+
+    # API entry points — each mounts a FastAPI at <app_base>/<prefix>; its
+    # /openapi.json is served iff the entry point mounted successfully.
+    for prefix in env_list("EXPECT_APIS"):
+        st, _ = req("GET", "/%s/openapi.json" % prefix.strip("/"), base=APP)
+        check(st == 200, "api entry point mounted: %s (openapi.json -> %s)" % (prefix, st))
+
+    # Dashboard entry points — mounted at <app_base>/dashboards/<id_url_safe>.
+    for did in env_list("EXPECT_DASHBOARDS"):
+        st, _ = req("GET", "/dashboards/%s" % did.strip("/"), base=APP)
+        check(st != 404 and st != 0, "dashboard entry point mounted: %s (-> %s)" % (did, st))
+
+    if env_list("EXPECT_ACTIONS") and os.environ.get("UPLOAD_ENABLED") != "true":
+        print("  NOTE  expect.actions is set but Tier 2 is off (needs credentials); "
+              "action entry points were NOT verified.", flush=True)
+
+    if os.environ.get("UPLOAD_ENABLED") == "true":
+        print("== Tier 2: end-to-end login -> upload -> process -> search -> delete ==", flush=True)
+        timeout = int(os.environ.get("TIMEOUT", "300"))
+        # Auth: prefer a pre-created NOMAD app token (portable, no ROPC grant
+        # needed); fall back to username/password (ROPC via /auth/token).
+        token = os.environ.get("NOMAD_TOKEN") or None
+        if token:
+            check(True, "using pre-created app token")
+        else:
+            user = os.environ.get("NOMAD_USERNAME")
+            pw = os.environ.get("NOMAD_PASSWORD")
+            check(bool(user and pw), "credentials provided (token, or username+password)")
+            if user and pw:
+                form = urllib.parse.urlencode({"username": user, "password": pw}).encode()
+                st, tok = req("POST", "/auth/token", data=form,
+                              headers={"Content-Type": "application/x-www-form-urlencoded"})
+                check(st == 200, "POST /auth/token (login) -> %s" % st)
+                token = tok.get("access_token")
+                check(bool(token), "received access token")
+
+        if token:
+            # Action entry points — /actions/schemas requires a logged-in user,
+            # so this check lives in Tier 2 rather than Tier 1.
+            want_actions = env_list("EXPECT_ACTIONS")
+            if want_actions:
+                st, resp = req("GET", "/actions/schemas", token=token)
+                action_ids = set()
+                if isinstance(resp, list):
+                    action_ids = {a.get("action_id") for a in resp}
+                check(st == 200, "GET /actions/schemas -> %s" % st)
+                for want in want_actions:
+                    check(want in action_ids, "action entry point loaded: %s" % want)
+
+            expect_parser = os.environ.get("EXPECT_PARSER_NAME") or ""
+            expect_type = os.environ.get("EXPECT_ENTRY_TYPE") or ""
+            name = os.environ["SAMPLE_NAME"]
+            with open(os.environ["SAMPLE_PATH"], "rb") as f:
+                sample = f.read()
+            st, up = req("POST", "/uploads?" + urllib.parse.urlencode({"file_name": name}),
+                         data=sample, headers={"Content-Type": "application/octet-stream"},
+                         token=token)
+            check(st in (200, 201), "POST /uploads (file uploaded) -> %s" % st)
+            uid = (up.get("data") or {}).get("upload_id") or up.get("upload_id")
+            check(bool(uid), "upload created (id=%s)" % uid)
+            if uid:
+                # 1) Worker + Temporal: wait for processing to finish.
+                waited, running, status = 0, True, None
+                while waited < timeout:
+                    st, u = req("GET", "/uploads/%s" % uid, token=token)
+                    d = u.get("data") or {}
+                    running = d.get("process_running", True)
+                    status = d.get("process_status")
+                    if not running:
+                        break
+                    time.sleep(5)
+                    waited += 5
+                check(not running, "processing finished (waited %ss, status=%s)" % (waited, status))
+                check(status == "SUCCESS", "upload process_status == SUCCESS (got %s)" % status)
+
+                # 2) Mongo + ES: entries created, all SUCCESS, and indexed
+                #    (entry_metadata is populated from Elasticsearch).
+                st, ent = req("GET", "/uploads/%s/entries" % uid, token=token)
+                data = ent.get("data") or []
+                total = (ent.get("pagination") or {}).get("total", 0)
+                check(total > 0, "entries created by worker (%s)" % total)
+                # processing_failed covers ALL entries (pagination-proof) - a .zip
+                # of raw files typically yields many entries across several pages.
+                failed = ent.get("processing_failed")
+                check(failed == 0, "no failed entries (processing_failed=%s of %s)" % (failed, total))
+                metas = [e.get("entry_metadata") for e in data]
+                check(bool(metas) and all(m for m in metas),
+                      "entries indexed in Elasticsearch (entry_metadata present)")
+
+                # 3) Custom plugin actually RAN: the matching parser is yours,
+                #    not the generic archive parser. Opt-in via values.
+                parser_names = [e.get("parser_name") for e in data]
+                if expect_parser:
+                    check(expect_parser in parser_names,
+                          "custom parser ran: parser_name '%s' in %s" % (expect_parser, parser_names))
+                if expect_type:
+                    types = [(m or {}).get("entry_type") for m in metas]
+                    check(expect_type in types,
+                          "custom schema present: entry_type '%s' in %s" % (expect_type, types))
+
+                # 4) User-facing search: the entry is findable via the query API.
+                q = {"owner": "visible", "query": {"upload_id": uid},
+                     "pagination": {"page_size": 5}}
+                st, s = req("POST", "/entries/query", data=json.dumps(q).encode(),
+                            headers={"Content-Type": "application/json"}, token=token)
+                found = (s.get("pagination") or {}).get("total", 0)
+                check(st == 200 and found > 0,
+                      "entry searchable via /entries/query -> %s (%s hit(s))" % (st, found))
+
+                # 5) Cleanup: delete removes entries (Mongo + ES) AND raw/staging
+                #    files. Poll until the upload is gone to confirm it completed.
+                st, _ = req("DELETE", "/uploads/%s" % uid, token=token)
+                check(st in (200, 404), "DELETE /uploads/%s accepted -> %s" % (uid, st))
+                waited = 0
+                while waited < timeout:
+                    st, _ = req("GET", "/uploads/%s" % uid, token=token)
+                    if st == 404:
+                        break
+                    time.sleep(3)
+                    waited += 3
+                check(st == 404,
+                      "upload, entries and files removed (GET -> %s after %ss)" % (st, waited))
+
+    print("", flush=True)
+    if fails:
+        print("RESULT: FAILED (%d check(s))" % len(fails), flush=True)
+        for m in fails:
+            print("  - " + m, flush=True)
+        sys.exit(1)
+    print("RESULT: ALL CHECKS PASSED", flush=True)
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "nomad.fullname" . }}-test
+  labels:
+    {{- include "nomad.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "0"
+    # Keep the pod after a run so `kubectl logs` works; it is recreated on the
+    # next `helm test`. (No hook-succeeded, so a failed run's logs survive too.)
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  restartPolicy: Never
+  {{- with .Values.nomad.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  securityContext:
+    {{- toYaml .Values.nomad.app.podSecurityContext | nindent 4 }}
+  containers:
+    - name: test
+      image: "{{ $image.repository }}:{{ $image.tag }}"
+      imagePullPolicy: {{ $image.pullPolicy }}
+      securityContext:
+        {{- toYaml .Values.nomad.app.securityContext | nindent 8 }}
+      command: ["python3", "/scripts/run-tests.py"]
+      env:
+        - name: API_BASE
+          value: {{ $apiBase | quote }}
+        - name: APP_BASE
+          value: {{ $appBase | quote }}
+        - name: EXPECT_PARSERS
+          value: {{ join "," $tests.expect.parsers | quote }}
+        - name: EXPECT_NORMALIZERS
+          value: {{ join "," $tests.expect.normalizers | quote }}
+        - name: EXPECT_PLUGINS
+          value: {{ join "," $tests.expect.pluginPackages | quote }}
+        - name: EXPECT_APPS
+          value: {{ join "," $tests.expect.apps | quote }}
+        - name: EXPECT_APIS
+          value: {{ join "," $tests.expect.apis | quote }}
+        - name: EXPECT_DASHBOARDS
+          value: {{ join "," $tests.expect.dashboards | quote }}
+        - name: EXPECT_ACTIONS
+          value: {{ join "," $tests.expect.actions | quote }}
+        - name: UPLOAD_ENABLED
+          value: {{ $tests.upload.enabled | quote }}
+        - name: TIMEOUT
+          value: {{ $tests.upload.timeout | quote }}
+        - name: SAMPLE_NAME
+          value: {{ $tests.upload.sampleFileName | quote }}
+        - name: SAMPLE_PATH
+          value: {{ $samplePath | quote }}
+        - name: EXPECT_PARSER_NAME
+          value: {{ $tests.upload.expectParserName | quote }}
+        - name: EXPECT_ENTRY_TYPE
+          value: {{ $tests.upload.expectEntryType | quote }}
+        {{- if and $tests.upload.enabled $tests.upload.credentialsSecret }}
+        # Keys are optional: supply `token` (a pre-created NOMAD app token) OR
+        # `username`+`password`. Missing keys are fine thanks to optional: true.
+        - name: NOMAD_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ $tests.upload.credentialsSecret | quote }}
+              key: token
+              optional: true
+        - name: NOMAD_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ $tests.upload.credentialsSecret | quote }}
+              key: username
+              optional: true
+        - name: NOMAD_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ $tests.upload.credentialsSecret | quote }}
+              key: password
+              optional: true
+        {{- end }}
+      volumeMounts:
+        - name: test-scripts
+          mountPath: /scripts
+        {{- if $extSample }}
+        - name: test-sample
+          mountPath: /sample
+          readOnly: true
+        {{- end }}
+  volumes:
+    - name: test-scripts
+      configMap:
+        name: {{ include "nomad.fullname" . }}-test
+    {{- if $extSample }}
+    - name: test-sample
+      {{- if $tests.upload.existingSampleSecret }}
+      secret:
+        secretName: {{ $tests.upload.existingSampleSecret | quote }}
+      {{- else }}
+      configMap:
+        name: {{ $tests.upload.existingSampleConfigMap | quote }}
+      {{- end }}
+    {{- end }}
+{{- end }}
