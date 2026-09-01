@@ -479,6 +479,78 @@ nomad:
       successThreshold: 1
       timeoutSeconds: 1
 
+  # `helm test <release>` smoke test that verifies the data pipeline actually
+  # works end-to-end, beyond pods merely being "Ready". Two tiers:
+  #   Tier 1 (always, no credentials): hits the API through the proxy and asserts
+  #     Elasticsearch responds and that the plugin entry points named in `expect`
+  #     (parsers, normalizers, apps, apis, dashboards) are loaded/mounted — proving
+  #     your custom image's plugins registered.
+  #   Tier 2 (opt-in, needs credentials): logs in, uploads a file, waits for it to
+  #     finish, and asserts process_status==SUCCESS with entries created, searchable,
+  #     and produced by the expected parser (proves app -> Temporal -> worker ->
+  #     Mongo -> shared fs volumes), then deletes it. Also checks `expect.actions`,
+  #     which the API only exposes to a logged-in user.
+  tests:
+    # Disabled by default: opt in per deployment. When true, `helm test <release>`
+    # renders and runs the verification hook described above.
+    enabled: false
+    # Override the test image; defaults to nomad.image (already present in-cluster,
+    # ships python3 — no extra pull).
+    image: {}
+    # Per-plugin-type presence checks. Each list names entry points that MUST be
+    # loaded/mounted; empty = skip that type. This proves a plugin's entry point
+    # actually registered (not just that the package is on disk). All run in Tier 1
+    # (no credentials) EXCEPT `actions`, which the API only exposes to a logged-in
+    # user — those are checked in Tier 2 when upload credentials are provided.
+    expect:
+      parsers: []          # names from GET /info parsers[]        e.g. "parsers/vasp"
+      normalizers: []      # names from GET /info normalizers[]
+      pluginPackages: []   # names from GET /info plugin_packages[] (any type, package-level)
+      apps: []             # app id or path from GET /api/v1/apps/entry-points
+      apis: []             # API entry point prefixes (mounted FastAPI at <base>/<prefix>)
+      dashboards: []       # dashboard id_url_safe (mounted at <base>/dashboards/<id>)
+      actions: []          # action_id from GET /api/v1/actions/schemas (needs credentials)
+    upload:
+      # Off by default: the full upload flow needs a real user to authenticate
+      # against the configured Keycloak.
+      enabled: false
+      # Name of a Secret holding NOMAD credentials. Provide EITHER:
+      #   - key `token`: a pre-created NOMAD app token (recommended; portable,
+      #     works even where the Keycloak realm disables the password grant), OR
+      #   - keys `username` + `password`: a NOMAD account (ROPC login).
+      credentialsSecret: ""
+      # Seconds to wait for processing (and for cleanup) before failing.
+      timeout: 300
+      # Name of the file that gets uploaded. NOMAD auto-extracts .zip/.tar, so a
+      # zipped directory of raw files works out of the box (one entry per mainfile).
+      sampleFileName: test.archive.json
+      # Inline sample content (text only). Minimal archive that parses to a valid
+      # empty entry on any distro. Ignored when existingSampleConfigMap/Secret is
+      # set (use those for binary samples like .zip — see below).
+      sampleFileContent: |
+        {
+          "metadata": {
+            "entry_name": "nomad-helm-test",
+            "comment": "NOMAD Helm chart helm-test smoke entry"
+          }
+        }
+      # For a local .zip (or any binary) sample: create a ConfigMap/Secret from it
+      # once, then reference it here. The key inside MUST equal sampleFileName, and
+      # sampleFileName should carry the right extension (e.g. sample.zip):
+      #   kubectl create configmap nomad-test-sample \
+      #     --from-file=sample.zip=./sample.zip -n <namespace>
+      # then set sampleFileName: sample.zip and existingSampleConfigMap: nomad-test-sample.
+      # Note: ConfigMaps/Secrets cap at ~1 MiB; for larger fixtures use a PVC.
+      # Use a Secret instead when the sample is sensitive (takes precedence).
+      existingSampleConfigMap: ""
+      existingSampleSecret: ""
+      # Prove a CUSTOM plugin actually ran (not just registered): after processing,
+      # assert the entry was produced by this parser rather than parsers/archive.
+      # Pair with a sampleFileContent your parser matches. Empty = skip.
+      expectParserName: ""
+      # Optionally assert the resulting entry's schema/entry_type. Empty = skip.
+      expectEntryType: ""
+
   ingress:
     enabled: false
     limitConnections: 32

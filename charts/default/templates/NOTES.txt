@@ -32,6 +32,19 @@
    exist before certificates will be issued. See custom-values/tls.yaml for examples.
 {{- end }}
 
+{{- if .Values.nomad.tests.enabled }}
+
+✅ Verify the deployment actually processes data (not just that pods are Ready):
+
+     helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }} --logs
+
+   This checks the app/proxy, that parsers + normalizers (incl. your custom image's
+   plugins) loaded, and that Elasticsearch responds. To also exercise a real
+   upload -> Temporal -> worker -> entry flow, set nomad.tests.upload.enabled=true
+   and point nomad.tests.upload.credentialsSecret at a Secret with `username` and
+   `password` keys.
+{{- end }}
+
 1. Get the application URL by running these commands:
 {{- if .Values.nomad.ingress.enabled }}
   http{{ if $tlsEnabled }}s{{ end }}://{{ $apiHost }}{{ $path }}

@@ -687,6 +687,203 @@ docker exec nomad-oasis-control-plane chown -R 1000:1000 /app/.volumes/fs/north
 docker exec nomad-oasis-control-plane chmod -R 755 /app/.volumes/fs/north
 ```
 
+## Verifying the Deployment (`helm test`)
+
+Healthy pods only prove the processes started — the readiness/liveness probes check that the API answers HTTP, not that data actually flows through parsing, the worker, Temporal, MongoDB and Elasticsearch. A broken plugin in a custom image is the classic trap: every pod is green, but uploads never produce entries.
+
+The chart ships a `helm test` hook that exercises the real pipeline. It is **disabled by default** — enable it per deployment with `nomad.tests.enabled: true` (or `--set nomad.tests.enabled=true`), then run:
+
+```bash
+helm test <release-name> --namespace <namespace> --logs
+```
+
+It runs as a Pod (reusing `nomad.image`, so no extra pull and the same `imagePullSecrets`) that drives the public API **through the proxy** — no ingress, LoadBalancer or cloud-specific setup required, so it behaves identically on EKS, GKE, minikube and Kind. There are two tiers:
+
+**Tier 1 — component & plugin health (always on, no credentials).** Asserts that the app answers via the proxy, that parsers **and** normalizers are loaded (proving your custom image's plugins registered), and that Elasticsearch responds.
+
+**Tier 2 — full end-to-end (opt-in).** Logs in, uploads a file, waits for processing, asserts the entry is created, searchable, and produced by the expected parser, then deletes the upload and confirms the entries **and** files are gone. This is the only check that proves app → Temporal → worker → Mongo → shared `fs` volumes all work together.
+
+### Configuration (`nomad.tests`)
+
+```yaml
+nomad:
+  tests:
+    enabled: false             # opt in per deployment to render the helm test hook
+    expect:                    # per-plugin-type presence checks; empty list = skip that type
+      parsers: []              # Tier 1: names from GET /info parsers[]
+      normalizers: []          # Tier 1: names from GET /info normalizers[]
+      pluginPackages: []       # Tier 1: names from GET /info plugin_packages[] (any type)
+      apps: []                 # Tier 1: app id/path from GET /api/v1/apps/entry-points
+      apis: []                 # Tier 1: API entry point prefixes (mounted FastAPI)
+      dashboards: []           # Tier 1: dashboard id (mounted at <base>/dashboards/<id>)
+      actions: []              # Tier 2: action_id from /api/v1/actions/schemas (needs creds)
+    upload:
+      enabled: false           # Tier 2: needs credentials, off by default
+      credentialsSecret: ""    # Secret with a `token` key (recommended) OR `username`+`password`
+      timeout: 300             # seconds to wait for processing (and cleanup)
+      sampleFileName: test.archive.json
+      sampleFileContent: |     # inline text sample (ignored when an existingSample* is set)
+        { "metadata": { "entry_name": "nomad-helm-test" } }
+      existingSampleConfigMap: ""  # mount a user-created ConfigMap for binary samples (e.g. .zip)
+      existingSampleSecret: ""     # ...or a Secret (takes precedence) for sensitive samples
+      expectParserName: ""     # assert the entry was produced by THIS parser (proves a plugin ran)
+      expectEntryType: ""      # optionally assert the resulting entry_type
+```
+
+### Plugin-type coverage
+
+NOMAD plugins come in several entry-point types. Each is loaded independently, so a plugin package can be installed while one of its entry points fails to register — `helm test` verifies each type against the API surface that actually exposes it:
+
+| Plugin type | How it's verified | Endpoint | Tier |
+|-------------|-------------------|----------|------|
+| Parser | registered + (optionally) **executed** on an upload | `GET /info` `parsers[]`; `expectParserName` after processing | 1 (+2) |
+| Normalizer | registered | `GET /info` `normalizers[]` | 1 |
+| Schema package | package installed / `entry_type` on a produced entry | `GET /info` `plugin_packages[]`; `expectEntryType` | 1 (+2) |
+| App (GUI search app) | loaded | `GET /api/v1/apps/entry-points` | 1 |
+| API | FastAPI mounted (its `openapi.json` responds) | `GET <base>/<prefix>/openapi.json` | 1 |
+| Dashboard | mounted | `GET <base>/dashboards/<id>` | 1 |
+| Action | loaded (login required) | `GET /api/v1/actions/schemas` | 2 |
+
+> [!NOTE]
+> `expect.pluginPackages` is the catch-all: `/info` lists every installed plugin package regardless of type, so it confirms a package is present even for a type not individually listed above. The per-type checks go further by proving the *entry point* mounted, not just that the package is on disk. All checks are opt-in — an empty list skips that type.
+
+> [!IMPORTANT]
+> `expect.parsers` uses the **bare** parser name as returned by `/info` — the `parsers/` prefix is stripped there (e.g. `crystal`, `fhi-aims`, not `parsers/crystal`). In contrast, `upload.expectParserName` matches the entry's stored `parser_name`, which **keeps** the prefix (e.g. `parsers/vasp`).
+
+Example covering every type of a custom image:
+
+```yaml
+nomad:
+  tests:
+    expect:
+      parsers: ["my_parser"]          # bare name as listed by /info (no "parsers/" prefix)
+      normalizers: ["MyNormalizer"]
+      pluginPackages: ["my-nomad-plugin"]
+      apps: ["my_plugin.apps.mysearchapp"]
+      apis: ["my-api"]
+      dashboards: ["my-dashboard"]
+      actions: ["my_action"]          # verified only when upload.enabled + credentials
+    upload:
+      enabled: true
+      credentialsSecret: nomad-test-creds
+```
+
+### Authentication for Tier 2
+
+The upload flow needs a NOMAD account. Provide **either** a pre-created app token (recommended — portable, and works even where the Keycloak realm disables the password grant) **or** a username/password:
+
+```bash
+# Recommended: an app token created from the NOMAD GUI (user settings)
+kubectl create secret generic nomad-test-creds --from-literal=token=<app-token>
+
+# Or username + password
+kubectl create secret generic nomad-test-creds \
+  --from-literal=username=<user> --from-literal=password=<pass>
+```
+```yaml
+nomad:
+  tests:
+    upload:
+      enabled: true
+      credentialsSecret: nomad-test-creds
+```
+
+### Testing a custom plugin
+
+To prove a custom parser actually **ran** (not just that it registered), upload a file it matches and assert its `parser_name`:
+
+```yaml
+nomad:
+  tests:
+    expect:
+      pluginPackages: ["my-plugin-package"]  # Tier 1: present in the image
+    upload:
+      enabled: true
+      credentialsSecret: nomad-test-creds
+      sampleFileName: my_data.dat          # a file your parser matches
+      sampleFileContent: |
+        ...raw content...
+      expectParserName: "parsers/my_plugin"  # Tier 2: proves it executed
+```
+
+### Uploading a local `.zip`
+
+NOMAD auto-extracts `.zip`/`.tar` on upload (one entry per mainfile). A binary zip can't be inlined in `values.yaml` (ConfigMaps are text and cap at ~1 MiB), so create a ConfigMap from your local file and reference it:
+
+```bash
+kubectl create configmap nomad-test-sample \
+  --from-file=sample.zip=./sample.zip -n <namespace>
+```
+```yaml
+nomad:
+  tests:
+    upload:
+      enabled: true
+      credentialsSecret: nomad-test-creds
+      sampleFileName: sample.zip           # key inside the ConfigMap must match
+      existingSampleConfigMap: nomad-test-sample
+      expectParserName: "parsers/vasp"      # optional
+```
+
+> [!NOTE]
+> ConfigMaps/Secrets cap at ~1 MiB. For larger fixtures, use a pre-populated PVC instead.
+
+### Using `helm test` in CI/CD
+
+`helm test` exits non-zero if any check fails, so it plugs straight into a pipeline as the "is the deployment green?" gate. The pattern is: install/upgrade → wait for rollout → run the test → surface logs.
+
+```bash
+set -euo pipefail
+
+helm upgrade --install nomad-oasis ./charts/default \
+  -f my-values.yaml --namespace nomad --create-namespace --wait --timeout 15m \
+  --set nomad.tests.enabled=true
+
+# Optional but recommended: ensure every Deployment finished rolling out
+kubectl -n nomad rollout status deploy --timeout=10m
+
+# The gate. Non-zero exit fails the job; --logs prints the per-check PASS/FAIL.
+helm test nomad-oasis --namespace nomad --logs
+```
+
+For **GitHub Actions**, credentials for Tier 2 go through repository secrets:
+
+```yaml
+# .github/workflows/verify.yml (excerpt)
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ... set up kubectl/helm and cluster access ...
+      - name: Provision Tier 2 credentials
+        run: |
+          kubectl -n nomad create secret generic nomad-test-creds \
+            --from-literal=token='${{ secrets.NOMAD_APP_TOKEN }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+      - name: Deploy
+        run: |
+          helm upgrade --install nomad-oasis ./charts/default \
+            -f my-values.yaml -n nomad --create-namespace --wait --timeout 15m \
+            --set nomad.tests.enabled=true \
+            --set nomad.tests.upload.enabled=true \
+            --set nomad.tests.upload.credentialsSecret=nomad-test-creds
+      - name: Verify deployment (gate)
+        run: helm test nomad-oasis -n nomad --logs
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          kubectl -n nomad get pods
+          kubectl -n nomad logs -l app.kubernetes.io/component=test --tail=-1 || true
+```
+
+Notes for CI:
+
+- **Prefer an app token over a password** for `credentialsSecret` — it's a single revocable secret and doesn't depend on the Keycloak realm allowing the password grant.
+- On a locked-down runner with no internet egress, Tier 1 still runs fully in-cluster; only Tier 2 login needs to reach Keycloak. Keep Tier 2 off in that case (`upload.enabled: false`) and rely on the plugin-entry-point checks.
+- The test Pod is left in place after a run (recreated on the next `helm test`), so `kubectl logs -l app.kubernetes.io/component=test` retrieves the result for build artifacts even after the command returns.
+- For a scheduled health check of a long-running deployment, run `helm test` on a cron (e.g. a `CronJob` or a scheduled workflow) and alert on non-zero exit.
+
 ## Troubleshooting
 
 ### Pods not starting
