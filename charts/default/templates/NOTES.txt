@@ -32,17 +32,6 @@
    exist before certificates will be issued. See custom-values/tls.yaml for examples.
 {{- end }}
 
-{{- if and .Values.nomad.ingress.enabled (eq (include "nomad.ingress.controller" .) "traefik") }}
-
-ℹ  Ingress targets Traefik. Make sure the Traefik entrypoint readTimeout is disabled
-   (Traefik v3 defaults it to 60s, which aborts large uploads), e.g. with the Traefik
-   Helm chart: --set ports.web.transport.respondingTimeouts.readTimeout=0
-{{- if .Values.nomad.ingress.traefik.crds.enabled }}
-   Rate limiting and timeouts are applied via Traefik Middleware/ServersTransport CRs;
-   this requires the Traefik CRDs (set nomad.ingress.traefik.crds.enabled=false otherwise).
-{{- end }}
-{{- end }}
-
 1. Get the application URL by running these commands:
 {{- if .Values.nomad.ingress.enabled }}
   http{{ if $tlsEnabled }}s{{ end }}://{{ $apiHost }}{{ $path }}

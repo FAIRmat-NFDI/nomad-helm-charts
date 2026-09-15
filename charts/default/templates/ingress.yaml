@@ -4,7 +4,6 @@
 {{- $svcPort := .Values.nomad.service.port -}}
 {{- $path := $config.services.api_base_path -}}
 {{- $apiHost := $config.services.api_host -}}
-{{- $controller := include "nomad.ingress.controller" . -}}
 {{- if and .Values.nomad.ingress.className (not (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion)) }}
   {{- if not (hasKey .Values.nomad.ingress.annotations "kubernetes.io/ingress.class") }}
   {{- $_ := set .Values.nomad.ingress.annotations "kubernetes.io/ingress.class" .Values.nomad.ingress.className}}
@@ -23,7 +22,23 @@ metadata:
   labels:
     {{- include "nomad.labels" . | nindent 4 }}
   annotations:
-    {{- include "nomad.ingress.annotations" (dict "root" . "limitConnections" .Values.nomad.ingress.limitConnections "middleware" "inflight") | nindent 4 }}
+    {{- if ne .Values.nomad.ingress.className "alb" }}
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "{{ .Values.nomad.proxy.timeout }}"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "{{ .Values.nomad.proxy.timeout }}"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "{{ .Values.nomad.proxy.connectionTimeout }}"
+    nginx.ingress.kubernetes.io/limit-connections: "{{ .Values.nomad.ingress.limitConnections }}"
+    {{- end }}
+    {{- if .Values.nomad.ingress.certManager.enabled }}
+    {{- if eq .Values.nomad.ingress.certManager.issuerKind "ClusterIssuer" }}
+    cert-manager.io/cluster-issuer: {{ .Values.nomad.ingress.certManager.issuerName | quote }}
+    {{- else }}
+    cert-manager.io/issuer: {{ .Values.nomad.ingress.certManager.issuerName | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with .Values.nomad.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   {{- if and .Values.nomad.ingress.className (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
   ingressClassName: {{ .Values.nomad.ingress.className }}
@@ -60,7 +75,7 @@ spec:
               serviceName: {{ $fullName }}-proxy
               servicePort: {{ $svcPort }}
               {{- end }}
-          {{- if eq $controller "alb" }}
+          {{- if eq .Values.nomad.ingress.className "alb" }}
           - path: {{ $path }}/*
             pathType: ImplementationSpecific
             backend:

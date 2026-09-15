@@ -8,7 +8,7 @@
 #   ./helpers/minikube-setup.sh --local-keycloak
 #
 # It layers this overlay onto minikube.yaml and injects hostAliases pointing
-# nomad-oasis.local at the in-cluster Traefik ClusterIP, so server-side OIDC
+# nomad-oasis.local at the in-cluster nginx ClusterIP, so server-side OIDC
 # discovery from NOMAD pods resolves the Keycloak ingress.
 #
 # To layer manually onto another base values file:
@@ -16,9 +16,9 @@
 #   helm install nomad-oasis . \
 #     -f custom-values/minikube.yaml \
 #     -f custom-values/local-keycloak.yaml \
-#     --set "nomad.app.hostAliases[0].ip=<traefik-clusterip>" \
+#     --set "nomad.app.hostAliases[0].ip=<nginx-clusterip>" \
 #     --set "nomad.app.hostAliases[0].hostnames[0]=nomad-oasis.local" \
-#     --set "nomad.worker.hostAliases[0].ip=<traefik-clusterip>" \
+#     --set "nomad.worker.hostAliases[0].ip=<nginx-clusterip>" \
 #     --set "nomad.worker.hostAliases[0].hostnames[0]=nomad-oasis.local"
 #
 # After deployment, import the pre-built realm definition:
@@ -54,7 +54,10 @@ keycloak:
 
   ingress:
     enabled: true
-    ingressClassName: traefik
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
     rules:
       - host: nomad-oasis.local
         paths:

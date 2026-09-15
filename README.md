@@ -114,7 +114,7 @@ All configuration lives under the `nomad` key in your values file. See [`charts/
 | `nomad.config`                             | NOMAD application settings (written to `/app/nomad.yaml`)  |
 | `nomad.image`                              | Container image repository and tag                         |
 | `nomad.proxy`, `nomad.app`, `nomad.worker` | Replica counts, resources, timeouts                        |
-| `nomad.ingress`                            | Ingress controller (Traefik by default; nginx/alb/gce supported), class, annotations, TLS, and cert-manager settings |
+| `nomad.ingress`                            | Ingress class, annotations, TLS, and cert-manager settings |
 | `nomad.secrets`                            | API, Keycloak, and other secrets                           |
 | `nomad.infrastructure`                     | Service host overrides (auto-detected by default)          |
 
@@ -128,7 +128,7 @@ Rather than writing a values file from scratch, you can use one of the ready-mad
 | File | Where | Best for |
 | --- | --- | --- |
 | `kubernetes/values.yaml` | [`nomad-distro-template`](https://github.com/FAIRmat-NFDI/nomad-distro-template) | Single-node clusters (Minikube, Kind, k3s). No persistence, uses `hostPath`. Includes JupyterHub (NORTH). Uses the distro-template image. |
-| `custom-values/minikube.yaml` | `charts/default/custom-values/` | Minikube specifically. Reduced resource requests, hostname set to `nomad-oasis.local`, Traefik ingress enabled. |
+| `custom-values/minikube.yaml` | `charts/default/custom-values/` | Minikube specifically. Reduced resource requests, hostname set to `nomad-oasis.local`, ingress enabled (served by Traefik). |
 | `custom-values/kind.yaml` | `charts/default/custom-values/` | Kind specifically. Similar to the Minikube file but with `localhost` as hostname and longer health-check timeouts to account for Kind's slower image pull behaviour. |
 | `custom-values/aws.yaml` | `charts/default/custom-values/` | AWS EKS. Enables persistence with EFS (`ReadWriteMany`) for NOMAD volumes and `gp2` EBS for databases. Configures an ALB ingress controller. |
 

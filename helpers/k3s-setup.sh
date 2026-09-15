@@ -64,12 +64,25 @@ echo ""
 echo "Step 3: Installing Traefik..."
 # k3s was installed with --disable traefik above so the chart-managed Traefik
 # below is the only ingress controller (k3s servicelb exposes it on host port 80).
+# Ingress objects in this chart use ingressClassName: nginx with ingress-nginx
+# annotations; Traefik's Kubernetes Ingress NGINX provider (v3.6.2+) claims that
+# class and translates the annotations. The IngressClass must exist for it to
+# bind (a real ingress-nginx install would have created it).
+$KUBECTL apply -f - <<'EOF_IC'
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+spec:
+  controller: k8s.io/ingress-nginx
+EOF_IC
 helm repo add traefik https://traefik.github.io/charts --force-update
 helm repo update
 # readTimeout=0: Traefik v3 defaults the entrypoint read timeout to 60s, which
 # aborts large NOMAD uploads.
 helm upgrade --install traefik traefik/traefik \
   --namespace traefik --create-namespace \
+  --set providers.kubernetesIngressNGINX.enabled=true \
   --set ports.web.transport.respondingTimeouts.readTimeout=0 \
   --set ports.websecure.transport.respondingTimeouts.readTimeout=0 \
   --set service.type=LoadBalancer \

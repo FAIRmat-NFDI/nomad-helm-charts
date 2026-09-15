@@ -75,12 +75,25 @@ minikube addons enable storage-provisioner
 # Step 3b: Install Traefik ingress controller
 echo ""
 echo "Step 3b: Installing Traefik ingress controller..."
+# Ingress objects in this chart use ingressClassName: nginx with ingress-nginx
+# annotations; Traefik's Kubernetes Ingress NGINX provider (v3.6.2+) claims that
+# class and translates the annotations. The IngressClass must exist for it to
+# bind (a real ingress-nginx install would have created it).
+kubectl apply -f - <<'EOF_IC'
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+spec:
+  controller: k8s.io/ingress-nginx
+EOF_IC
 helm repo add traefik https://traefik.github.io/charts --force-update
 helm repo update
 # readTimeout=0: Traefik v3 defaults the entrypoint read timeout to 60s, which
 # aborts large NOMAD uploads. hostPort: bind 80/443 directly on the node.
 helm upgrade --install traefik traefik/traefik \
   --namespace traefik --create-namespace \
+  --set providers.kubernetesIngressNGINX.enabled=true \
   --set ports.web.transport.respondingTimeouts.readTimeout=0 \
   --set ports.websecure.transport.respondingTimeouts.readTimeout=0 \
   --set ports.web.hostPort=80 \

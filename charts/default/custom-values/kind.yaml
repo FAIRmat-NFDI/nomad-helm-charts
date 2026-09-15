@@ -204,7 +204,9 @@ nomad:
 
   ingress:
     enabled: true
-    className: traefik
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-body-size: "32g"
     tls: []
 
   service:
@@ -314,10 +316,12 @@ jupyterhub:
       type: ClusterIP
   ingress:
     enabled: true
-    ingressClassName: traefik
+    ingressClassName: nginx
     hosts:
       - localhost
     pathType: Prefix
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
   prePuller:
     hook:
       enabled: false

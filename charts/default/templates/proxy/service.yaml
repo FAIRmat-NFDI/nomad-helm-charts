@@ -6,11 +6,6 @@ metadata:
   labels:
     {{- include "nomad.labels" . | nindent 4 }}
     app.kubernetes.io/component: proxy
-  {{- if include "nomad.ingress.traefikCRs" . }}
-  annotations:
-    # Backend timeouts for Traefik; see templates/ingress-traefik.yaml
-    traefik.ingress.kubernetes.io/service.serverstransport: {{ include "nomad.ingress.traefikRef" (dict "root" . "name" "transport") }}
-  {{- end }}
 spec:
   type: {{ .Values.nomad.proxy.service.type }}
   ports:

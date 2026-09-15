@@ -1,15 +1,10 @@
 {{/*
-The separate API ingress only exists to apply a tighter per-client connection
-limit on the /api path (limitConnectionsApi): an nginx limit-connections
-annotation, or a Traefik InFlightReq middleware. The longer path prefix wins
-over the main ingress's api_base_path rule in both controllers.
-
-It is skipped for L7 load balancers that turn each Ingress resource into its
-own load balancer (alb, gce). there the main ingress's api_base_path Prefix
-rule already covers the /api path.
+The separate API ingress only exists to apply nginx-specific per-path rate
+limiting (limitConnectionsApi). It is skipped for L7 load balancers that turn
+each Ingress resource into its own load balancer (alb, gce) — there the main
+ingress's api_base_path Prefix rule already covers the /api path.
 */}}
-{{- $controller := include "nomad.ingress.controller" . -}}
-{{- if and .Values.nomad.ingress.enabled .Values.nomad.ingress.limitConnectionsApi (ne $controller "alb") (ne $controller "gce") -}}
+{{- if and .Values.nomad.ingress.enabled (ne .Values.nomad.ingress.className "alb") (ne .Values.nomad.ingress.className "gce") -}}
 {{- $config := .Values.nomad.config -}}
 {{- $fullName := include "nomad.fullname" . -}}
 {{- $svcPort := .Values.nomad.service.port -}}
@@ -33,7 +28,25 @@ metadata:
   labels:
     {{- include "nomad.labels" . | nindent 4 }}
   annotations:
-    {{- include "nomad.ingress.annotations" (dict "root" . "limitConnections" .Values.nomad.ingress.limitConnectionsApi "middleware" "inflight-api") | nindent 4 }}
+    {{- if ne .Values.nomad.ingress.className "alb" }}
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "{{ .Values.nomad.proxy.timeout }}"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "{{ .Values.nomad.proxy.timeout }}"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "{{ .Values.nomad.proxy.connectionTimeout }}"
+    {{- if .Values.nomad.ingress.limitConnectionsApi }}
+    nginx.ingress.kubernetes.io/limit-connections: "{{ .Values.nomad.ingress.limitConnectionsApi }}"
+    {{- end }}
+    {{- end }}
+    {{- if .Values.nomad.ingress.certManager.enabled }}
+    {{- if eq .Values.nomad.ingress.certManager.issuerKind "ClusterIssuer" }}
+    cert-manager.io/cluster-issuer: {{ .Values.nomad.ingress.certManager.issuerName | quote }}
+    {{- else }}
+    cert-manager.io/issuer: {{ .Values.nomad.ingress.certManager.issuerName | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with .Values.nomad.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   {{- if and .Values.nomad.ingress.className (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
   ingressClassName: {{ .Values.nomad.ingress.className }}

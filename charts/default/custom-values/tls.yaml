@@ -1,4 +1,4 @@
-# TLS overlay for self-hosted ingress controllers (Traefik, ingress-nginx) with cert-manager
+# TLS overlay for nginx-based ingress controllers with cert-manager
 # visit https://cert-manager.io/docs/configuration/acme/
 nomad:
   config:
@@ -7,7 +7,8 @@ nomad:
       https: true
 
   ingress:
-    sslRedirect: true
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
 
     # cert-manager will provision and auto-renew the certificate.
     # The TLS secret is named <release-name>-tls and created automatically.
@@ -26,11 +27,7 @@ jupyterhub:
       NOMAD_OASIS_URL: "https://your-domain.com/nomad-oasis"
   ingress:
     annotations:
-      # Reuse the https redirect Middleware rendered by the NOMAD chart
-      # (<namespace>-<release>-redirect-https); adjust if you deploy to another
-      # namespace or release name. For ingress-nginx use
-      #   nginx.ingress.kubernetes.io/ssl-redirect: "true"
-      traefik.ingress.kubernetes.io/router.middlewares: nomad-oasis-nomad-oasis-redirect-https@kubernetescrd
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
     tls:
       - hosts:
           - your-domain.com
