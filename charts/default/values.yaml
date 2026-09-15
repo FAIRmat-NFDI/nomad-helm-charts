@@ -481,12 +481,35 @@ nomad:
 
   ingress:
     enabled: false
+    controller: ""
+    className: ""
+    # Max simultaneous connections per client IP, for the whole site and for the
+    # /api path (a second Ingress is rendered for the latter). Set to 0 to disable.
     limitConnections: 32
     limitConnectionsApi: 8
-    className: ""
-    annotations:
-      nginx.ingress.kubernetes.io/ssl-redirect: "false"
-      nginx.ingress.kubernetes.io/proxy-body-size: 32g
+    # Max requests per second per client IP (nginx limit-rps / Traefik RateLimit
+    # with a 5x burst, matching nginx's default burst multiplier). 0 = disabled.
+    limitRps: 0
+    # Redirect http -> https. Only meaningful together with tls / certManager.
+    sslRedirect: false
+    # Extra annotations, merged over the controller-specific ones (these win).
+    annotations: {}
+    traefik:
+      # Render the Traefik CRs the chart uses for limitConnections*, sslRedirect
+      # and the backend timeouts (nomad.proxy.timeout / connectionTimeout).
+      # Requires the Traefik CRDs (traefik.io/v1alpha1) in the cluster; they ship
+      # with the Traefik Helm chart. Disable to render a plain Ingress only.
+      #
+      # Note: Traefik v3 defaults the entrypoint readTimeout to 60s, which aborts
+      # large uploads. Set it to 0 on the Traefik installation, e.g. with the
+      # Traefik Helm chart:
+      #   ports.web.transport.respondingTimeouts.readTimeout=0
+      #   ports.websecure.transport.respondingTimeouts.readTimeout=0
+      crds:
+        enabled: true
+    nginx:
+      # Max request body size (upload limit); nginx only.
+      proxyBodySize: 32g
     # TLS configuration. Either provide pre-existing TLS secrets or use cert-manager below.
     # Standard Kubernetes ingress TLS format; also used when certManager.enabled is false.
     # Example:

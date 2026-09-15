@@ -199,3 +199,97 @@ spec:
     requests:
       storage: {{ $volumeConfig.size }}
 {{- end }}
+
+{{/*
+Resolve which ingress controller the chart targets. Explicit nomad.ingress.controller
+wins; otherwise it is inferred from className for the well-known classes so that
+existing values files (className: alb / gce / nginx) keep working; else traefik.
+*/}}
+{{- define "nomad.ingress.controller" -}}
+{{- $ing := .Values.nomad.ingress -}}
+{{- if $ing.controller -}}
+{{- $ing.controller -}}
+{{- else if has $ing.className (list "nginx" "alb" "gce" "traefik") -}}
+{{- $ing.className -}}
+{{- else -}}
+traefik
+{{- end -}}
+{{- end -}}
+
+{{/*
+Whether Traefik CRs (Middleware, ServersTransport) are rendered and referenced.
+*/}}
+{{- define "nomad.ingress.traefikCRs" -}}
+{{- if and .Values.nomad.ingress.enabled (eq (include "nomad.ingress.controller" .) "traefik") .Values.nomad.ingress.traefik.crds.enabled -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+Reference to a Traefik CR from the kubernetescrd provider: <namespace>-<name>@kubernetescrd
+Usage: {{ include "nomad.ingress.traefikRef" (dict "root" . "name" "inflight") }}
+*/}}
+{{- define "nomad.ingress.traefikRef" -}}
+{{ .root.Release.Namespace }}-{{ include "nomad.fullname" .root }}-{{ .name }}@kubernetescrd
+{{- end -}}
+
+{{/*
+Controller-specific ingress annotations, merged with the user-supplied
+nomad.ingress.annotations (user keys win). Rendered as a YAML mapping.
+Usage:
+  {{- include "nomad.ingress.annotations" (dict "root" . "limitConnections" 32 "middleware" "inflight") | nindent 4 }}
+"limitConnections" and "middleware" are optional; "middleware" names the Traefik
+InFlightReq Middleware (suffix) to attach for that ingress.
+*/}}
+{{- define "nomad.ingress.annotations" -}}
+{{- $root := .root -}}
+{{- $ing := $root.Values.nomad.ingress -}}
+{{- $proxy := $root.Values.nomad.proxy -}}
+{{- $controller := include "nomad.ingress.controller" $root -}}
+{{- $ann := dict -}}
+{{- if eq $controller "nginx" -}}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/proxy-request-buffering" "off" -}}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/proxy-body-size" (toString $ing.nginx.proxyBodySize) -}}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/proxy-send-timeout" (toString $proxy.timeout) -}}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/proxy-read-timeout" (toString $proxy.timeout) -}}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/proxy-connect-timeout" (toString $proxy.connectionTimeout) -}}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/ssl-redirect" (ternary "true" "false" $ing.sslRedirect) -}}
+{{- if .limitConnections -}}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/limit-connections" (toString .limitConnections) -}}
+{{- end -}}
+{{- if $ing.limitRps -}}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/limit-rps" (toString $ing.limitRps) -}}
+{{- end -}}
+{{- else if eq $controller "traefik" -}}
+{{- if include "nomad.ingress.traefikCRs" $root -}}
+{{- $chain := list -}}
+{{- if $ing.sslRedirect -}}
+{{- $chain = append $chain (include "nomad.ingress.traefikRef" (dict "root" $root "name" "redirect-https")) -}}
+{{- end -}}
+{{- if and .middleware .limitConnections -}}
+{{- $chain = append $chain (include "nomad.ingress.traefikRef" (dict "root" $root "name" .middleware)) -}}
+{{- end -}}
+{{- if $ing.limitRps -}}
+{{- $chain = append $chain (include "nomad.ingress.traefikRef" (dict "root" $root "name" "ratelimit")) -}}
+{{- end -}}
+{{- if $chain -}}
+{{- $_ := set $ann "traefik.ingress.kubernetes.io/router.middlewares" (join "," $chain) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if $ing.certManager.enabled -}}
+{{- if eq $ing.certManager.issuerKind "ClusterIssuer" -}}
+{{- $_ := set $ann "cert-manager.io/cluster-issuer" $ing.certManager.issuerName -}}
+{{- else -}}
+{{- $_ := set $ann "cert-manager.io/issuer" $ing.certManager.issuerName -}}
+{{- end -}}
+{{- end -}}
+{{- with $ing.annotations -}}
+{{- $ann = mergeOverwrite $ann (deepCopy .) -}}
+{{- end -}}
+{{- if $ann -}}
+{{- toYaml $ann -}}
+{{- else -}}
+{}
+{{- end -}}
+{{- end -}}

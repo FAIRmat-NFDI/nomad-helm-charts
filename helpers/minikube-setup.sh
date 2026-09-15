@@ -70,8 +70,22 @@ minikube start \
 # Step 3: Enable required addons
 echo ""
 echo "Step 3: Enabling addons..."
-minikube addons enable ingress
 minikube addons enable storage-provisioner
+
+# Step 3b: Install Traefik ingress controller
+echo ""
+echo "Step 3b: Installing Traefik ingress controller..."
+helm repo add traefik https://traefik.github.io/charts --force-update
+helm repo update
+# readTimeout=0: Traefik v3 defaults the entrypoint read timeout to 60s, which
+# aborts large NOMAD uploads. hostPort: bind 80/443 directly on the node.
+helm upgrade --install traefik traefik/traefik \
+  --namespace traefik --create-namespace \
+  --set ports.web.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.websecure.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.web.hostPort=80 \
+  --set ports.websecure.hostPort=443 \
+  --wait --timeout 5m
 
 # Step 4: Create host directories for nomad data
 echo ""
@@ -123,19 +137,19 @@ if $USE_TLS; then
 fi
 if $LOCAL_KEYCLOAK; then
   # NOMAD pods need to resolve $NOMAD_HOSTNAME (the Keycloak ingress host) to the
-  # in-cluster nginx ClusterIP, since OIDC discovery happens server-side.
-  NGINX_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+  # in-cluster Traefik ClusterIP, since OIDC discovery happens server-side.
+  INGRESS_IP=$(kubectl get svc -n traefik traefik \
     -o jsonpath='{.spec.clusterIP}')
-  if [ -z "$NGINX_IP" ]; then
-    echo "Error: could not resolve ingress-nginx-controller ClusterIP."
+  if [ -z "$INGRESS_IP" ]; then
+    echo "Error: could not resolve the traefik Service ClusterIP."
     exit 1
   fi
-  echo "  Wiring local Keycloak via hostAliases ($NOMAD_HOSTNAME -> $NGINX_IP)"
+  echo "  Wiring local Keycloak via hostAliases ($NOMAD_HOSTNAME -> $INGRESS_IP)"
   HELM_ARGS+=(
     -f custom-values/local-keycloak.yaml
-    --set "nomad.app.hostAliases[0].ip=$NGINX_IP"
+    --set "nomad.app.hostAliases[0].ip=$INGRESS_IP"
     --set "nomad.app.hostAliases[0].hostnames[0]=$NOMAD_HOSTNAME"
-    --set "nomad.worker.hostAliases[0].ip=$NGINX_IP"
+    --set "nomad.worker.hostAliases[0].ip=$INGRESS_IP"
     --set "nomad.worker.hostAliases[0].hostnames[0]=$NOMAD_HOSTNAME"
   )
 fi

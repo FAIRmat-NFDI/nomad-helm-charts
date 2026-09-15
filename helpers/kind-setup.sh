@@ -63,15 +63,21 @@ docker exec "$CLUSTER_NAME-control-plane" mkdir -p /app/.volumes/fs/{staging,pub
 docker exec "$CLUSTER_NAME-control-plane" chown -R 1000:1000 /app/.volumes/fs
 docker exec "$CLUSTER_NAME-control-plane" chmod -R 755 /app/.volumes/fs
 
-# Step 4: Install nginx ingress controller for Kind
+# Step 4: Install Traefik ingress controller for Kind
 echo ""
-echo "Step 4: Installing nginx ingress controller..."
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
-echo "Waiting for ingress controller to be ready..."
-kubectl wait --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=120s
+echo "Step 4: Installing Traefik ingress controller..."
+helm repo add traefik https://traefik.github.io/charts --force-update
+helm repo update
+# readTimeout=0: Traefik v3 defaults the entrypoint read timeout to 60s, which
+# aborts large NOMAD uploads. hostPort: bind 80/443 directly on the node.
+helm upgrade --install traefik traefik/traefik \
+  --namespace traefik --create-namespace \
+  --set ports.web.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.websecure.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.web.hostPort=80 \
+  --set ports.websecure.hostPort=443 \
+  --set service.type=ClusterIP \
+  --wait --timeout 5m
 
 # Step 5: Update Helm dependencies
 echo ""

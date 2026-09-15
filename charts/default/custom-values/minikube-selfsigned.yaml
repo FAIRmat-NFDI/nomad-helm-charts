@@ -27,7 +27,10 @@ jupyterhub:
       NOMAD_OASIS_URL: "https://nomad-oasis.local/nomad-oasis"
   ingress:
     annotations:
-      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      # Reuse the https redirect Middleware rendered by the NOMAD chart
+      # (<namespace>-<release>-redirect-https). For ingress-nginx use
+      #   nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      traefik.ingress.kubernetes.io/router.middlewares: nomad-oasis-nomad-oasis-redirect-https@kubernetescrd
     tls:
       - hosts:
           - nomad-oasis.local
