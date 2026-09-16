@@ -479,6 +479,29 @@ nomad:
       successThreshold: 1
       timeoutSeconds: 1
 
+  # `helm test <release>` end-to-end smoke test. Verifies that the core services
+  # work together, beyond pods merely being "Ready": it logs in (Keycloak),
+  # uploads a minimal archive.json (app -> shared fs volumes), waits for
+  # processing (Temporal -> worker -> MongoDB), checks the entry is indexed and
+  # searchable (Elasticsearch), reads the raw and archive files back, then
+  # deletes the upload and confirms everything is gone. It uses only the
+  # built-in archive parser, so it is independent of installed plugins;
+  # distribution-specific checks belong in the distribution repository.
+  tests:
+    # Disabled by default: opt in per deployment. When true, `helm test <release>`
+    # renders and runs the verification hook described above.
+    enabled: false
+    # Override the test image; defaults to nomad.image (already present in-cluster,
+    # ships python3 — no extra pull).
+    image: {}
+    # Required. Name of a Secret holding NOMAD credentials. Provide EITHER:
+    #   - key `token`: a pre-created NOMAD app token (recommended; portable,
+    #     works even where the Keycloak realm disables the password grant), OR
+    #   - keys `username` + `password`: a NOMAD account (ROPC login).
+    credentialsSecret: ""
+    # Seconds to wait for processing (and for cleanup) before failing.
+    timeout: 300
+
   ingress:
     enabled: false
     limitConnections: 32

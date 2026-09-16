@@ -1,0 +1,228 @@
+{{- if and .Values.nomad.enabled .Values.nomad.tests.enabled -}}
+{{- $config := .Values.nomad.config -}}
+{{- $tests := .Values.nomad.tests -}}
+{{- $image := $tests.image | default .Values.nomad.image -}}
+{{- $apiBase := printf "http://%s-proxy:%v%s/api/v1" (include "nomad.fullname" .) .Values.nomad.proxy.service.port $config.services.api_base_path -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nomad.fullname" . }}-test
+  labels:
+    {{- include "nomad.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+data:
+  # A minimal NOMAD archive. The built-in archive parser matches any
+  # *archive.json file and, with only a `metadata` block, produces a valid
+  # entry on every distribution regardless of which plugins are installed.
+  test.archive.json: |
+    {
+      "metadata": {
+        "entry_name": "nomad-helm-test",
+        "comment": "NOMAD Helm chart helm-test smoke entry"
+      }
+    }
+  run-tests.py: |
+    import os, sys, json, time, urllib.request, urllib.error, urllib.parse
+
+    API = os.environ["API_BASE"].rstrip("/")
+    TIMEOUT = int(os.environ.get("TIMEOUT", "300"))
+    SAMPLE = "test.archive.json"
+    fails = []
+
+    def req(method, path, data=None, headers=None, token=None):
+        h = dict(headers or {})
+        if token:
+            h["Authorization"] = "Bearer " + token
+        r = urllib.request.Request(API + path, data=data, method=method, headers=h)
+        try:
+            resp = urllib.request.urlopen(r, timeout=30)
+            body = resp.read()
+            return resp.status, (json.loads(body) if body else {})
+        except urllib.error.HTTPError as e:
+            body = e.read()
+            try:
+                return e.code, json.loads(body)
+            except Exception:
+                return e.code, {"raw": body.decode(errors="replace")[:300]}
+        except Exception as e:
+            return 0, {"error": str(e)}
+
+    def check(cond, msg):
+        print(("  PASS  " if cond else "  FAIL  ") + msg, flush=True)
+        if not cond:
+            fails.append(msg)
+        return cond
+
+    def finish():
+        print("", flush=True)
+        if fails:
+            print("RESULT: FAILED (%d check(s))" % len(fails), flush=True)
+            for m in fails:
+                print("  - " + m, flush=True)
+            sys.exit(1)
+        print("RESULT: ALL CHECKS PASSED", flush=True)
+        sys.exit(0)
+
+    print("Target API: " + API, flush=True)
+
+    # --- app + proxy ---------------------------------------------------------
+    st, _ = req("GET", "/info")
+    if not check(st == 200, "GET /info -> %s (app reachable via proxy)" % st):
+        finish()
+
+    # --- keycloak ------------------------------------------------------------
+    token = os.environ.get("NOMAD_TOKEN") or None
+    user, pw = os.environ.get("NOMAD_USERNAME"), os.environ.get("NOMAD_PASSWORD")
+    if token:
+        check(True, "using pre-created app token from credentialsSecret")
+    elif user and pw:
+        form = urllib.parse.urlencode({"username": user, "password": pw}).encode()
+        st, tok = req("POST", "/auth/token", data=form,
+                      headers={"Content-Type": "application/x-www-form-urlencoded"})
+        check(st == 200, "POST /auth/token (Keycloak login) -> %s" % st)
+        token = tok.get("access_token")
+        check(bool(token), "received access token")
+    else:
+        check(False, "credentials missing: set nomad.tests.credentialsSecret to a Secret "
+                     "with key `token` or keys `username`+`password`")
+    if not token:
+        finish()
+    st, me = req("GET", "/users/me", token=token)
+    check(st == 200, "GET /users/me -> %s (token accepted, user=%s)" % (st, me.get("username")))
+
+    # --- upload: app -> shared staging/tmp volumes ----------------------------
+    with open(os.environ["SAMPLE_PATH"], "rb") as f:
+        sample = f.read()
+    st, up = req("POST", "/uploads?" + urllib.parse.urlencode({"file_name": SAMPLE}),
+                 data=sample, headers={"Content-Type": "application/octet-stream"},
+                 token=token)
+    check(st in (200, 201), "POST /uploads -> %s" % st)
+    uid = (up.get("data") or {}).get("upload_id")
+    if not check(bool(uid), "upload created (id=%s)" % uid):
+        finish()
+
+    # --- processing: temporal -> worker -> mongodb -----------------------------
+    waited, running, status = 0, True, None
+    while waited < TIMEOUT:
+        st, u = req("GET", "/uploads/%s" % uid, token=token)
+        d = u.get("data") or {}
+        running = d.get("process_running", True)
+        status = d.get("process_status")
+        if not running:
+            break
+        time.sleep(5)
+        waited += 5
+    check(not running, "processing finished (waited %ss, status=%s)" % (waited, status))
+    check(status == "SUCCESS", "upload process_status == SUCCESS (got %s)" % status)
+
+    # --- entries: mongodb + elasticsearch --------------------------------------
+    st, ent = req("GET", "/uploads/%s/entries" % uid, token=token)
+    entries = ent.get("data") or []
+    check(st == 200 and len(entries) == 1, "GET /uploads/{id}/entries -> %s (%d entry)" % (st, len(entries)))
+    check(ent.get("processing_failed") == 0, "no failed entries (processing_failed=%s)" % ent.get("processing_failed"))
+    entry = entries[0] if entries else {}
+    eid = entry.get("entry_id")
+    check(bool(entry.get("entry_metadata")), "entry indexed in Elasticsearch (entry_metadata present)")
+
+    q = {"owner": "visible", "query": {"upload_id": uid}, "pagination": {"page_size": 5}}
+    st, s = req("POST", "/entries/query", data=json.dumps(q).encode(),
+                headers={"Content-Type": "application/json"}, token=token)
+    found = (s.get("pagination") or {}).get("total", 0)
+    check(st == 200 and found == 1, "entry searchable via POST /entries/query -> %s (%s hit)" % (st, found))
+
+    # --- files: raw + archive volumes ------------------------------------------
+    st, raw = req("GET", "/uploads/%s/raw/%s" % (uid, SAMPLE), token=token)
+    check(st == 200 and raw == json.loads(sample),
+          "raw file readable via GET /uploads/{id}/raw/%s -> %s" % (SAMPLE, st))
+    if eid:
+        st, arch = req("GET", "/entries/%s/archive" % eid, token=token)
+        archive = ((arch.get("data") or {}).get("archive") or {})
+        check(st == 200 and "metadata" in archive,
+              "archive readable via GET /entries/{id}/archive -> %s" % st)
+
+    # --- cleanup: mongodb + elasticsearch + files ------------------------------
+    st, _ = req("DELETE", "/uploads/%s" % uid, token=token)
+    check(st in (200, 404), "DELETE /uploads/{id} -> %s" % st)
+    waited = 0
+    while waited < TIMEOUT:
+        st, _ = req("GET", "/uploads/%s" % uid, token=token)
+        if st == 404:
+            break
+        time.sleep(3)
+        waited += 3
+    check(st == 404, "upload, entry and files removed (GET -> %s after %ss)" % (st, waited))
+    if eid:
+        st, _ = req("GET", "/entries/%s/archive" % eid, token=token)
+        check(st == 404, "archive gone after delete (GET -> %s)" % st)
+
+    finish()
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "nomad.fullname" . }}-test
+  labels:
+    {{- include "nomad.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "0"
+    # Keep the pod after a run so `kubectl logs` works; it is recreated on the
+    # next `helm test`. (No hook-succeeded, so a failed run's logs survive too.)
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  restartPolicy: Never
+  {{- with .Values.nomad.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  securityContext:
+    {{- toYaml .Values.nomad.app.podSecurityContext | nindent 4 }}
+  containers:
+    - name: test
+      image: "{{ $image.repository }}:{{ $image.tag }}"
+      imagePullPolicy: {{ $image.pullPolicy }}
+      securityContext:
+        {{- toYaml .Values.nomad.app.securityContext | nindent 8 }}
+      command: ["python3", "/scripts/run-tests.py"]
+      env:
+        - name: API_BASE
+          value: {{ $apiBase | quote }}
+        - name: TIMEOUT
+          value: {{ $tests.timeout | quote }}
+        - name: SAMPLE_PATH
+          value: /scripts/test.archive.json
+        {{- with $tests.credentialsSecret }}
+        # Keys are optional: supply `token` (a pre-created NOMAD app token) OR
+        # `username`+`password`.
+        - name: NOMAD_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ . | quote }}
+              key: token
+              optional: true
+        - name: NOMAD_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ . | quote }}
+              key: username
+              optional: true
+        - name: NOMAD_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ . | quote }}
+              key: password
+              optional: true
+        {{- end }}
+      volumeMounts:
+        - name: test-scripts
+          mountPath: /scripts
+  volumes:
+    - name: test-scripts
+      configMap:
+        name: {{ include "nomad.fullname" . }}-test
+{{- end }}

@@ -687,6 +687,73 @@ docker exec nomad-oasis-control-plane chown -R 1000:1000 /app/.volumes/fs/north
 docker exec nomad-oasis-control-plane chmod -R 755 /app/.volumes/fs/north
 ```
 
+## Verifying the Deployment (`helm test`)
+
+Healthy pods only prove the processes started — the readiness/liveness probes check that the API answers HTTP, not that data actually flows through Keycloak, the worker, Temporal, MongoDB, Elasticsearch and the shared filesystem volumes.
+
+The chart ships a `helm test` hook that exercises exactly that path, end to end, using only NOMAD's built-in archive parser so it works on any distribution regardless of which plugins are installed. It is **disabled by default** — enable it per deployment with `nomad.tests.enabled: true`, point `nomad.tests.credentialsSecret` at a Secret with NOMAD credentials, then run:
+
+```bash
+helm test <release-name> --namespace <namespace> --logs
+```
+
+The test runs as a Pod (reusing `nomad.image`, so no extra pull and the same `imagePullSecrets`) that drives the public API **through the proxy** — no ingress, LoadBalancer or cloud-specific setup required. It performs one linear flow and prints a `PASS`/`FAIL` line per step:
+
+| Step | What it proves |
+|------|----------------|
+| `GET /info` | app is up and reachable through the proxy |
+| `POST /auth/token` / `GET /users/me` | Keycloak issues and accepts tokens |
+| `POST /uploads` with a minimal `test.archive.json` | app writes to the shared `staging`/`tmp` volumes |
+| poll `GET /uploads/{id}` until `SUCCESS` | Temporal → worker → MongoDB processing works |
+| `GET /uploads/{id}/entries`, `POST /entries/query` | entry is stored and indexed in Elasticsearch |
+| `GET /uploads/{id}/raw/…`, `GET /entries/{id}/archive` | raw and archive files are readable from the shared volumes |
+| `DELETE /uploads/{id}` and poll for 404 | cleanup across MongoDB, Elasticsearch and the filesystem |
+
+### Configuration (`nomad.tests`)
+
+```yaml
+nomad:
+  tests:
+    enabled: true
+    credentialsSecret: nomad-test-creds   # Secret with key `token` OR keys `username`+`password`
+    timeout: 300                          # seconds to wait for processing (and cleanup)
+```
+
+The Secret can hold **either** a pre-created app token (recommended — a single revocable secret, and it works even where the Keycloak realm disables the password grant) **or** a username/password:
+
+```bash
+# Recommended: an app token created from the NOMAD GUI (user settings)
+kubectl create secret generic nomad-test-creds -n <namespace> --from-literal=token=<app-token>
+
+# Or username + password
+kubectl create secret generic nomad-test-creds -n <namespace> \
+  --from-literal=username=<user> --from-literal=password=<pass>
+```
+
+### Scope
+
+This test deliberately covers only the chart's responsibility: that the services it deploys work together. It does **not** verify anything distribution-specific — whether your custom plugins registered, whether a particular parser runs on your data, or whether your apps/APIs/dashboards are mounted. Those checks depend on the image, not the chart, and belong with the distribution itself: the [`nomad-distro-template`](https://github.com/FAIRmat-NFDI/nomad-distro-template) repository already has a place for plugin unit tests and distribution E2E tests.
+
+### Using `helm test` in CI/CD
+
+`helm test` exits non-zero if any step fails, so it plugs straight into a pipeline as the "is the deployment green?" gate:
+
+```bash
+set -euo pipefail
+
+kubectl -n nomad create secret generic nomad-test-creds \
+  --from-literal=token="$NOMAD_APP_TOKEN" --dry-run=client -o yaml | kubectl apply -f -
+
+helm upgrade --install nomad-oasis ./charts/default \
+  -f my-values.yaml --namespace nomad --create-namespace --wait --timeout 15m \
+  --set nomad.tests.enabled=true \
+  --set nomad.tests.credentialsSecret=nomad-test-creds
+
+helm test nomad-oasis --namespace nomad --logs
+```
+
+The test Pod is left in place after a run (it is recreated on the next `helm test`), so `kubectl -n nomad logs -l app.kubernetes.io/component=test` retrieves the result even after the command returns.
+
 ## Troubleshooting
 
 ### Pods not starting
