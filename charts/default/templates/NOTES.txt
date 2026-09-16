@@ -38,11 +38,11 @@
 
      helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }} --logs
 
-   This checks the app/proxy, that parsers + normalizers (incl. your custom image's
-   plugins) loaded, and that Elasticsearch responds. To also exercise a real
-   upload -> Temporal -> worker -> entry flow, set nomad.tests.upload.enabled=true
-   and point nomad.tests.upload.credentialsSecret at a Secret with `username` and
-   `password` keys.
+   This logs in, uploads a minimal archive.json, waits for processing, checks
+   the entry is indexed and its files readable, then deletes it again — covering
+   Keycloak, Temporal, the worker, MongoDB, Elasticsearch and the shared volumes.
+   It needs nomad.tests.credentialsSecret to point at a Secret with a `token`
+   key (or `username` + `password`).
 {{- end }}
 
 1. Get the application URL by running these commands:
