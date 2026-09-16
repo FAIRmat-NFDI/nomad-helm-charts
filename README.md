@@ -128,7 +128,7 @@ Rather than writing a values file from scratch, you can use one of the ready-mad
 | File | Where | Best for |
 | --- | --- | --- |
 | `kubernetes/values.yaml` | [`nomad-distro-template`](https://github.com/FAIRmat-NFDI/nomad-distro-template) | Single-node clusters (Minikube, Kind, k3s). No persistence, uses `hostPath`. Includes JupyterHub (NORTH). Uses the distro-template image. |
-| `custom-values/minikube.yaml` | `charts/default/custom-values/` | Minikube specifically. Reduced resource requests, hostname set to `nomad-oasis.local`, nginx ingress enabled. |
+| `custom-values/minikube.yaml` | `charts/default/custom-values/` | Minikube specifically. Reduced resource requests, hostname set to `nomad-oasis.local`, ingress enabled (served by Traefik). |
 | `custom-values/kind.yaml` | `charts/default/custom-values/` | Kind specifically. Similar to the Minikube file but with `localhost` as hostname and longer health-check timeouts to account for Kind's slower image pull behaviour. |
 | `custom-values/aws.yaml` | `charts/default/custom-values/` | AWS EKS. Enables persistence with EFS (`ReadWriteMany`) for NOMAD volumes and `gp2` EBS for databases. Configures an ALB ingress controller. |
 

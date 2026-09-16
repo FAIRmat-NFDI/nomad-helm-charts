@@ -481,8 +481,16 @@ nomad:
 
   ingress:
     enabled: false
-    limitConnections: 32
-    limitConnectionsApi: 8
+    # The Ingress uses ingress-nginx annotations. They are served either by
+    # ingress-nginx (retired upstream) or by Traefik >= 3.6.2 with
+    # providers.kubernetesIngressNGINX enabled, which claims the "nginx" class
+    # and translates them; see custom-values/README.md "Ingress controller".
+    # Max concurrent connections per client IP (nginx limit-connections), for
+    # the main ingress and the separate /api ingress. The GUI fans out many
+    # parallel requests per page load and users behind a shared NAT count as
+    # one IP, so keep these generous; set to 0 to drop the annotation entirely.
+    limitConnections: 128
+    limitConnectionsApi: 32
     className: ""
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"

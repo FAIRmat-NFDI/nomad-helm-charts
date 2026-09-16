@@ -61,18 +61,32 @@ if ! command -v helm &>/dev/null; then
 fi
 
 echo ""
-echo "Step 3: Installing ingress-nginx..."
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx --force-update
+echo "Step 3: Installing Traefik..."
+# k3s was installed with --disable traefik above so the chart-managed Traefik
+# below is the only ingress controller (k3s servicelb exposes it on host port 80).
+# Ingress objects in this chart use ingressClassName: nginx with ingress-nginx
+# annotations; Traefik's Kubernetes Ingress NGINX provider (v3.6.2+) claims that
+# class and translates the annotations. The IngressClass must exist for it to
+# bind (a real ingress-nginx install would have created it).
+$KUBECTL apply -f - <<'EOF_IC'
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+spec:
+  controller: k8s.io/ingress-nginx
+EOF_IC
+helm repo add traefik https://traefik.github.io/charts --force-update
 helm repo update
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx --create-namespace \
-  --set controller.service.type=LoadBalancer \
+# readTimeout=0: Traefik v3 defaults the entrypoint read timeout to 60s, which
+# aborts large NOMAD uploads.
+helm upgrade --install traefik traefik/traefik \
+  --namespace traefik --create-namespace \
+  --set providers.kubernetesIngressNGINX.enabled=true \
+  --set ports.web.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.websecure.transport.respondingTimeouts.readTimeout=0 \
+  --set service.type=LoadBalancer \
   --wait --timeout 5m
-echo "Waiting for the ingress-nginx controller (and its admission webhook)..."
-$KUBECTL wait --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=180s
 
 echo ""
 echo "Step 4: Preparing the host (data directories + /etc/hosts)..."
@@ -124,16 +138,16 @@ HELM_ARGS=(
 
 if $LOCAL_KEYCLOAK; then
   # NOMAD app/worker pods do server-side OIDC discovery, so they must resolve the
-  # Keycloak ingress host. Point $NOMAD_HOSTNAME at the in-cluster nginx ClusterIP
+  # Keycloak ingress host. Point $NOMAD_HOSTNAME at the in-cluster Traefik ClusterIP
   # via hostAliases (the host's /etc/hosts entry only applies on the host, not
   # inside the pods).
-  NGINX_IP=$($KUBECTL get svc -n ingress-nginx ingress-nginx-controller \
+  INGRESS_IP=$($KUBECTL get svc -n traefik traefik \
     -o jsonpath='{.spec.clusterIP}')
-  if [ -z "$NGINX_IP" ]; then
-    echo "Error: could not resolve ingress-nginx-controller ClusterIP."
+  if [ -z "$INGRESS_IP" ]; then
+    echo "Error: could not resolve the traefik Service ClusterIP."
     exit 1
   fi
-  echo "  Local Keycloak enabled; wiring hostAliases ($NOMAD_HOSTNAME -> $NGINX_IP)"
+  echo "  Local Keycloak enabled; wiring hostAliases ($NOMAD_HOSTNAME -> $INGRESS_IP)"
   # local-keycloak.yaml hardcodes nomad-oasis.local everywhere; override each
   # host-bearing field to the dynamic $NOMAD_HOSTNAME.
   HELM_ARGS+=(
@@ -143,9 +157,9 @@ if $LOCAL_KEYCLOAK; then
     --set "jupyterhub.hub.config.GenericOAuthenticator.authorize_url=http://$NOMAD_HOSTNAME/auth/realms/nomad-oasis/protocol/openid-connect/auth"
     --set "jupyterhub.hub.config.GenericOAuthenticator.token_url=http://$NOMAD_HOSTNAME/auth/realms/nomad-oasis/protocol/openid-connect/token"
     --set "jupyterhub.hub.config.GenericOAuthenticator.userdata_url=http://$NOMAD_HOSTNAME/auth/realms/nomad-oasis/protocol/openid-connect/userinfo"
-    --set "nomad.app.hostAliases[0].ip=$NGINX_IP"
+    --set "nomad.app.hostAliases[0].ip=$INGRESS_IP"
     --set "nomad.app.hostAliases[0].hostnames[0]=$NOMAD_HOSTNAME"
-    --set "nomad.worker.hostAliases[0].ip=$NGINX_IP"
+    --set "nomad.worker.hostAliases[0].ip=$INGRESS_IP"
     --set "nomad.worker.hostAliases[0].hostnames[0]=$NOMAD_HOSTNAME"
   )
 fi

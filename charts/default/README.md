@@ -321,8 +321,26 @@ This chart includes ready-to-use values files in the [`custom-values/`](custom-v
 # Start minikube with adequate resources
 minikube start --cpus=6 --memory=12288
 
-# Enable ingress
-minikube addons enable ingress
+# Install the Traefik ingress controller with its Ingress-NGINX provider: it claims
+# the 'nginx' IngressClass and translates the chart's nginx annotations.
+# readTimeout=0 keeps large uploads alive (Traefik v3 defaults it to 60s).
+kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+spec:
+  controller: k8s.io/ingress-nginx
+EOF
+helm repo add traefik https://traefik.github.io/charts
+helm upgrade --install traefik traefik/traefik \
+  --namespace traefik --create-namespace \
+  --set providers.kubernetesIngressNGINX.enabled=true \
+  --set ports.web.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.websecure.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.web.hostPort=80 \
+  --set ports.websecure.hostPort=443 \
+  --wait
 
 # Create required directories
 # Paths must match nomad.config.fs.{staging,public,north_home}_external in
@@ -397,12 +415,27 @@ docker exec nomad-oasis-control-plane mkdir -p /app/.volumes/fs/{staging,public,
 docker exec nomad-oasis-control-plane chown -R 1000:1000 /app/.volumes/fs
 docker exec nomad-oasis-control-plane chmod -R 755 /app/.volumes/fs
 
-# Install nginx ingress controller for Kind
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
-kubectl wait --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=120s
+# Install the Traefik ingress controller with its Ingress-NGINX provider: it claims
+# the 'nginx' IngressClass and translates the chart's nginx annotations.
+# readTimeout=0 keeps large uploads alive (Traefik v3 defaults it to 60s).
+kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+spec:
+  controller: k8s.io/ingress-nginx
+EOF
+helm repo add traefik https://traefik.github.io/charts
+helm upgrade --install traefik traefik/traefik \
+  --namespace traefik --create-namespace \
+  --set providers.kubernetesIngressNGINX.enabled=true \
+  --set ports.web.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.websecure.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.web.hostPort=80 \
+  --set ports.websecure.hostPort=443 \
+  --set service.type=ClusterIP \
+  --wait
 
 # Update dependencies and install
 helm dependency update ./charts/default
@@ -527,21 +560,21 @@ For local development (Minikube or Kind), the chart can deploy Keycloak as a sub
 **Deploy:**
 
 ```bash
-# Automated (recommended) — resolves the nginx ClusterIP automatically
+# Automated (recommended) — resolves the ingress controller ClusterIP automatically
 ./helpers/minikube-setup.sh --local-keycloak
 
 # Manual
-NGINX_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.spec.clusterIP}')
+INGRESS_IP=$(kubectl get svc traefik -n traefik -o jsonpath='{.spec.clusterIP}')
 helm install nomad-oasis ./charts/default \
   -f ./charts/default/custom-values/minikube.yaml \
   -f ./charts/default/custom-values/local-keycloak.yaml \
-  --set "nomad.app.hostAliases[0].ip=$NGINX_IP" \
+  --set "nomad.app.hostAliases[0].ip=$INGRESS_IP" \
   --set "nomad.app.hostAliases[0].hostnames[0]=nomad-oasis.local" \
-  --set "nomad.worker.hostAliases[0].ip=$NGINX_IP" \
+  --set "nomad.worker.hostAliases[0].ip=$INGRESS_IP" \
   --set "nomad.worker.hostAliases[0].hostnames[0]=nomad-oasis.local"
 ```
 
-> The `hostAliases` are required so that the app and worker pods can resolve `nomad-oasis.local` to the nginx ingress ClusterIP, allowing them to reach Keycloak via the same URL the browser uses.
+> The `hostAliases` are required so that the app and worker pods can resolve `nomad-oasis.local` to the ingress controller's ClusterIP, allowing them to reach Keycloak via the same URL the browser uses.
 
 After deployment, complete the one-time Keycloak setup described in the [custom-values README](custom-values/README.md#local-keycloak-development).
 
