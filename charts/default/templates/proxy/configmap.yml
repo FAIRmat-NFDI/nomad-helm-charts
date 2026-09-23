@@ -27,10 +27,26 @@ data:
         keepalive_timeout 60s;
     }
     {{- end }}
+
+    # Pool of keep-alive connections to the app backend
+    upstream nomad-app-backend {
+        server {{ include "nomad.fullname" . }}-app:8000;
+        keepalive 64;
+        keepalive_requests 1000;
+        keepalive_timeout 60s;
+    }
+
     server {
       listen        80;
       server_name   www.example.com;
       proxy_set_header Host $host;
+
+      # Reuse upstream keep-alive connections
+      proxy_http_version 1.1;
+      proxy_set_header   Connection "";
+
+      # Batch access-log writes instead of one synchronous write per request
+      access_log /var/log/nginx/access.log main buffer=64k flush=5s;
 
       proxy_connect_timeout {{ .Values.nomad.proxy.connectionTimeout }};
       proxy_read_timeout {{ .Values.nomad.proxy.timeout }};
@@ -56,7 +72,7 @@ data:
       {{- end }}
 
       location / {
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass http://nomad-app-backend;
       }
 
       location ~ {{ $apiBasePath }}\\/?(gui)?$ {
@@ -66,23 +82,23 @@ data:
       location {{ $apiBasePath }}/gui/ {
         proxy_intercept_errors on;
         error_page 404 = @redirect_to_index;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass http://nomad-app-backend;
       }
 
       location @redirect_to_index {
         rewrite ^ {{ $apiBasePath }}/gui/index.html break;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass http://nomad-app-backend;
       }
 
       location {{ $apiBasePath }}/docs/ {
         proxy_intercept_errors on;
         error_page 404 = @redirect_to_index_docs;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass http://nomad-app-backend;
       }
 
       location @redirect_to_index_docs {
         rewrite ^ {{ $apiBasePath }}/docs/index.html break;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass http://nomad-app-backend;
       }
 
       location ~ \/gui\/(service-worker\.js|meta\.json)$ {
@@ -91,24 +107,24 @@ data:
         if_modified_since off;
         expires off;
         etag off;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass http://nomad-app-backend;
       }
 
       location ~ /api/v1/uploads(/?$|.*/raw|.*/(bundle|import)$) {
         client_max_body_size 35g;
         proxy_request_buffering off;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass http://nomad-app-backend;
       }
 
       location ~ /api/v1/.*/download {
         proxy_buffering off;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass http://nomad-app-backend;
       }
 
       location ~ /api/v1/entries/edit {
         proxy_buffering off;
         proxy_read_timeout {{ .Values.nomad.proxy.editTimeout }};
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass http://nomad-app-backend;
       }
 
       {{- if $config.temporal.ui_enabled }}
