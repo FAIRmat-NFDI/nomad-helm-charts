@@ -27,7 +27,9 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "{{ .Values.nomad.proxy.timeout }}"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "{{ .Values.nomad.proxy.timeout }}"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "{{ .Values.nomad.proxy.connectionTimeout }}"
+    {{- if .Values.nomad.ingress.limitConnections }}
     nginx.ingress.kubernetes.io/limit-connections: "{{ .Values.nomad.ingress.limitConnections }}"
+    {{- end }}
     {{- end }}
     {{- if .Values.nomad.ingress.certManager.enabled }}
     {{- if eq .Values.nomad.ingress.certManager.issuerKind "ClusterIssuer" }}

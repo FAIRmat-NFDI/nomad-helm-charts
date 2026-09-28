@@ -4,8 +4,8 @@ Ready-to-use Helm values files for deploying NOMAD Oasis on different environmen
 
 | File                           | Environment      | Ingress | Storage   | TLS               |
 | ------------------------------ | ---------------- | ------- | --------- | ----------------- |
-| [minikube.yaml](minikube.yaml) | Local (Minikube) | nginx   | hostPath  | cert-manager      |
-| [kind.yaml](kind.yaml)         | Local (Kind)     | nginx   | hostPath  | cert-manager      |
+| [minikube.yaml](minikube.yaml) | Local (Minikube) | Traefik | hostPath  | cert-manager      |
+| [kind.yaml](kind.yaml)         | Local (Kind)     | Traefik | hostPath  | cert-manager      |
 | [aws.yaml](aws.yaml)           | AWS EKS          | ALB     | EFS + EBS | ACM (AWS-managed) |
 | [gke.yaml](gke.yaml)           | Google GKE       | GCE LB  | Filestore + PD | Google-managed certs |
 | [tls.yaml](tls.yaml)           | Self-hosted overlay | any  | —         | cert-manager      |
@@ -14,7 +14,7 @@ Ready-to-use Helm values files for deploying NOMAD Oasis on different environmen
 
 ## Self-Hosted
 
-Covers local development (Kind, Minikube) and on-premises Kubernetes clusters. Uses an nginx ingress controller. TLS is handled by cert-manager — no cloud account required.
+Covers local development (Kind, Minikube) and on-premises Kubernetes clusters. Uses the [Traefik](https://traefik.io/) ingress controller (see [Ingress controller](#ingress-controller)). TLS is handled by cert-manager — no cloud account required.
 
 ### Quick Start (local)
 
@@ -34,6 +34,43 @@ helm install nomad-oasis ./charts/default \
   -f ./charts/default/custom-values/kind.yaml \
   --timeout 15m
 ```
+
+### Ingress controller
+
+The chart renders standard Kubernetes `Ingress` resources with `ingressClassName: nginx` and `nginx.ingress.kubernetes.io/*` annotations (connection limits, timeouts, upload size, request streaming). Two controllers understand them:
+
+- **Traefik ≥ 3.6.2 (recommended)** with its [Kubernetes Ingress NGINX provider](https://doc.traefik.io/traefik/reference/install-configuration/providers/kubernetes/kubernetes-ingress-nginx/): it claims the `nginx` IngressClass and translates the annotations — `limit-connections`/`limit-rps` become InFlightReq/RateLimit middlewares, timeouts and body size map to their Traefik equivalents. No chart values change.
+- **ingress-nginx** — retired upstream (end-of-life March 2026); existing installations keep working until they migrate.
+
+Install Traefik once per cluster. The `nginx` IngressClass must exist (ingress-nginx creates it; on a fresh cluster create it yourself), and the entrypoint `readTimeout` must be 0 — Traefik v3 defaults it to 60 s, which aborts large uploads:
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+spec:
+  controller: k8s.io/ingress-nginx
+EOF
+helm repo add traefik https://traefik.github.io/charts
+helm upgrade --install traefik traefik/traefik \
+  --namespace traefik --create-namespace \
+  --set providers.kubernetesIngressNGINX.enabled=true \
+  --set ports.web.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.websecure.transport.respondingTimeouts.readTimeout=0
+```
+
+Not translated by Traefik: `denylist-source-range` (use an `IPAllowList`, a NetworkPolicy, or a Traefik plugin) and `proxy-buffer-size`/`proxy-buffers-number` (not needed; Traefik has no such buffer limits). Traefik documents the remaining [behavioral differences](https://doc.traefik.io/traefik/reference/routing-configuration/kubernetes/ingress-nginx/).
+
+#### Migrating an existing installation from ingress-nginx
+
+Follow Traefik's [NGINX to Traefik migration guide](https://doc.traefik.io/traefik/migrate/nginx-to-traefik/); nothing in the chart changes:
+
+1. Install Traefik next to ingress-nginx with the command above (add `--set providers.kubernetesIngressNGINX.publishService.enabled=false` while both run, so they don't fight over the Ingress status).
+2. Verify through Traefik's own IP without touching DNS: `curl --connect-to your-domain.com:443:<traefik-ip>: https://your-domain.com/nomad-oasis/api/v1/info`. Existing TLS secrets are reused; cert-manager keeps working (use a DNS-01 solver, or keep nginx until Traefik is reachable, for HTTP-01 renewals during the overlap).
+3. Shift traffic: re-point DNS or the external load balancer at Traefik.
+4. Uninstall ingress-nginx, **keeping the `nginx` IngressClass** (`helm.sh/resource-policy: keep`, or re-create it as above), then remove the `publishService` override.
 
 ### Enabling TLS (cert-manager)
 
