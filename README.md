@@ -175,7 +175,7 @@ The `default` chart includes these subcharts (all disabled by default, enable as
 - **MongoDB** 14.0.4 -- Document database
 - **Temporal** 0.72.0 -- Workflow orchestration
 - **PostgreSQL** 12.1.6 -- Temporal persistence backend
-- **JupyterHub** 3.2.1 -- NORTH interactive computing
+- **JupyterHub** 4.3.2 -- NORTH interactive computing
 
 ## Helper Scripts
 
