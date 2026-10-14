@@ -151,6 +151,14 @@ nomad:
     gui:
       debug: false
       gzip: true
+      # GUI served at <api_base_path>/gui/ to users without a saved preference
+      # (nomad_gui_pref cookie):
+      #   v2:     the new GUI (requires the nomad-gui plugin in the image)
+      #   select: the new GUI's page for choosing between the GUIs (requires nomad-gui)
+      #   v1:     the classic GUI only; use this for images without nomad-gui
+      # With v2/select, the classic GUI stays available at /gui/v1/ and under
+      # all of its existing /gui/... deep links.
+      default: v2
       config: {}
 
     oasis:
@@ -593,10 +601,12 @@ jupyterhub:
         # It is important to disable nonPrivateIPs otherwise the networkPolicy's will be silently ignored
         nonPrivateIPs: false
   hub:
-    # NORTH hub image with the NORTH KubeSpawner, see https://github.com/FAIRmat-NFDI/nomad-north
+    # NORTH hub image with the NORTH KubeSpawner, built from images/k8s in
+    # https://github.com/FAIRmat-NFDI/nomad-north. Its z2jh base version must
+    # match the jupyterhub chart version in Chart.yaml.
     image:
-      name: ghcr.io/fairmat-nfdi/nomad-north
-      tag: main-k8s
+      name: ghcr.io/fairmat-nfdi/nomad-north-k8s
+      tag: main
     resources:
       requests:
         memory: "256Mi"

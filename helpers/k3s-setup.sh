@@ -3,16 +3,20 @@
 #
 # Stands up a single-node demo directly on your machine using k3s. Unlike
 # minikube, k3s runs natively on the host, so the ingress controller binds the
-# host's port 80 and the demo is reachable at http://nomad-oasis.local/ without
-# a tunnel.
+# host's ports 80/443 and the demo is reachable at https://nomad-oasis.local/
+# without a tunnel.
 #
 # The host defaults to nomad-oasis.local, pointed at 127.0.0.1 via /etc/hosts,
 # so it matches the bundled custom-values files (minikube.yaml / local-keycloak)
 # out of the box.
 #
 # Run from the repository root:
-#   ./helpers/k3s-setup.sh                    # central NOMAD Keycloak (default)
-#   ./helpers/k3s-setup.sh --local-keycloak   # in-cluster Keycloak (admin/admin)
+#   ./helpers/k3s-setup.sh                    # HTTPS (self-signed), central NOMAD Keycloak (default)
+#   ./helpers/k3s-setup.sh --no-tls           # plain HTTP (the new GUI cannot sign in over HTTP)
+#   ./helpers/k3s-setup.sh --local-keycloak   # in-cluster Keycloak (admin/admin), plain HTTP
+#
+# TLS is on by default: the new GUI signs in with WebCrypto, which browsers only
+# provide in secure contexts (HTTPS or localhost).
 #
 # Override the hostname (e.g. a real domain) with:
 #   NOMAD_HOSTNAME=demo.example.com ./helpers/k3s-setup.sh
@@ -25,13 +29,28 @@
 set -euo pipefail
 
 # Parse flags
+USE_TLS=true
 LOCAL_KEYCLOAK=false
 for arg in "$@"; do
   case "$arg" in
+    --tls) USE_TLS=true ;;
+    --no-tls) USE_TLS=false ;;
     --local-keycloak) LOCAL_KEYCLOAK=true ;;
     *) echo "Unknown argument: $arg"; exit 1 ;;
   esac
 done
+
+# The local Keycloak realm (local-keycloak-realm.json) and its ingress are
+# HTTP-only, so keep the whole demo on HTTP when it is used.
+if $LOCAL_KEYCLOAK && $USE_TLS; then
+  echo "Note: --local-keycloak is HTTP-only; disabling TLS. The new GUI cannot sign in"
+  echo "      over HTTP, use the classic GUI at /nomad-oasis/gui/v1/ instead."
+  USE_TLS=false
+fi
+SCHEME=http
+if $USE_TLS; then
+  SCHEME=https
+fi
 
 RELEASE_NAME="${RELEASE_NAME:-nomad-oasis}"
 NAMESPACE="${NAMESPACE:-nomad-oasis}"
@@ -43,6 +62,9 @@ NOMAD_HOSTNAME="${NOMAD_HOSTNAME:-nomad-oasis.local}"
 echo "=== NOMAD Oasis k3s Local Setup ==="
 echo "Hostname: $NOMAD_HOSTNAME"
 echo "Namespace: $NAMESPACE"
+if $USE_TLS; then
+  echo "TLS: enabled (self-signed via cert-manager)"
+fi
 echo ""
 
 echo "Step 1: Installing k3s..."
@@ -112,6 +134,18 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT/charts/default"
 helm dependency update .
 
+if $USE_TLS; then
+  echo ""
+  echo "Step 5b: Installing cert-manager and the self-signed issuer..."
+  helm repo add jetstack https://charts.jetstack.io --force-update
+  helm upgrade --install cert-manager jetstack/cert-manager \
+    --namespace cert-manager --create-namespace \
+    --set crds.enabled=true \
+    --wait --timeout 5m
+  $KUBECTL apply -f custom-values/tls-issuer/selfsigned.yaml
+  $KUBECTL wait clusterissuer/selfsigned-issuer --for=condition=Ready --timeout=90s
+fi
+
 echo ""
 echo "Step 6: Creating namespace and secrets..."
 $KUBECTL create namespace "$NAMESPACE" --dry-run=client -o yaml | $KUBECTL apply -f -
@@ -131,8 +165,21 @@ HELM_ARGS=(
   # policies that would otherwise block the NOMAD app/worker from reaching the
   # hub API (Errno 111 / connection refused).
   -f custom-values/k3s.yaml
+)
+if $USE_TLS; then
+  # minikube-selfsigned.yaml targets nomad-oasis.local; the overrides below
+  # retarget its host-bearing fields to $NOMAD_HOSTNAME.
+  HELM_ARGS+=(
+    -f custom-values/tls.yaml
+    -f custom-values/minikube-selfsigned.yaml
+    --set "jupyterhub.hub.extraEnv.NOMAD_OASIS_URL=https://$NOMAD_HOSTNAME/nomad-oasis"
+    --set "jupyterhub.ingress.tls[0].hosts[0]=$NOMAD_HOSTNAME"
+    --set "jupyterhub.ingress.tls[0].secretName=nomad-oasis-jupyterhub-tls"
+  )
+fi
+HELM_ARGS+=(
   --set "nomad.config.services.api_host=$NOMAD_HOSTNAME"
-  --set "jupyterhub.hub.config.GenericOAuthenticator.oauth_callback_url=http://$NOMAD_HOSTNAME/nomad-oasis/north/hub/oauth_callback"
+  --set "jupyterhub.hub.config.GenericOAuthenticator.oauth_callback_url=$SCHEME://$NOMAD_HOSTNAME/nomad-oasis/north/hub/oauth_callback"
   --set "jupyterhub.ingress.hosts[0]=$NOMAD_HOSTNAME"
 )
 
@@ -178,7 +225,10 @@ echo "=== Installation Complete ==="
 $KUBECTL get pods -n "$NAMESPACE"
 echo ""
 echo "Open the demo at:"
-echo "  http://$NOMAD_HOSTNAME/nomad-oasis/gui/"
+echo "  $SCHEME://$NOMAD_HOSTNAME/nomad-oasis/gui/"
+if $USE_TLS; then
+  echo "  (the certificate is self-signed: accept the browser warning once)"
+fi
 echo ""
 
 if $LOCAL_KEYCLOAK; then

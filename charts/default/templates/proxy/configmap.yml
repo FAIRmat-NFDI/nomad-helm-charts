@@ -10,6 +10,10 @@ metadata:
 data:
   nginx.conf: |
     {{- $apiBasePath := $config.services.api_base_path }}
+    {{- $guiDefault := $config.gui.default | default "v2" }}
+    {{- if not (has $guiDefault (list "v1" "v2" "select")) }}
+    {{- fail "nomad.config.gui.default must be one of: v1, v2, select" }}
+    {{- end }}
     {{- if $config.north.enabled }}
     # top-level http config for websocket headers
     # If Upgrade is defined, Connection = upgrade
@@ -36,6 +40,9 @@ data:
       proxy_read_timeout {{ .Values.nomad.proxy.timeout }};
       proxy_pass_request_headers      on;
       underscores_in_headers          on;
+      # Keep redirects relative when TLS terminates at the ingress. Otherwise
+      # nginx would construct http:// URLs from its local port 80 listener.
+      absolute_redirect off;
 
       {{- if $config.gui.gzip }}
       gzip_min_length     1000;
@@ -59,9 +66,64 @@ data:
         proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
       }
 
-      location ~ {{ $apiBasePath }}\\/?(gui)?$ {
-        rewrite ^ {{ $apiBasePath }}/gui/ permanent;
+      location = {{ $apiBasePath }} {
+        return 301 {{ $apiBasePath }}/gui/$is_args$args;
       }
+
+      location = {{ $apiBasePath }}/ {
+        return 301 {{ $apiBasePath }}/gui/$is_args$args;
+      }
+
+      location = {{ $apiBasePath }}/gui {
+        return 301 {{ $apiBasePath }}/gui/$is_args$args;
+      }
+
+      {{- if ne $guiDefault "v1" }}
+      # GUI selection (requires the nomad-gui plugin in the image). The GUI
+      # entry point honours the nomad_gui_pref cookie set by the new GUI's
+      # selector and settings pages, and falls back to gui.default. Deep links
+      # below /gui/ keep serving the classic GUI, so existing URLs still work.
+      location = {{ $apiBasePath }}/gui/ {
+        if ($cookie_nomad_gui_pref = "v1") {
+          return 302 {{ $apiBasePath }}/gui/v1/$is_args$args;
+        }
+        if ($cookie_nomad_gui_pref = "v2") {
+          return 302 {{ $apiBasePath }}/gui/v2/$is_args$args;
+        }
+        {{- if eq $guiDefault "select" }}
+        return 302 {{ $apiBasePath }}/gui/v2/select-gui$is_args$args;
+        {{- else }}
+        return 302 {{ $apiBasePath }}/gui/v2/$is_args$args;
+        {{- end }}
+      }
+
+      location = {{ $apiBasePath }}/gui/v1 {
+        return 302 {{ $apiBasePath }}/gui/v1/$is_args$args;
+      }
+
+      location = {{ $apiBasePath }}/gui/v2 {
+        return 302 {{ $apiBasePath }}/gui/v2/$is_args$args;
+      }
+
+      # Stable alias for the classic GUI, which is served from /gui/.
+      location {{ $apiBasePath }}/gui/v1/ {
+        rewrite ^{{ $apiBasePath }}/gui/v1/(.*)$ {{ $apiBasePath }}/gui/$1 break;
+        proxy_intercept_errors on;
+        error_page 404 = @redirect_to_index;
+        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+      }
+
+      location {{ $apiBasePath }}/gui/v2/ {
+        proxy_intercept_errors on;
+        error_page 404 = @redirect_to_v2_index;
+        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+      }
+
+      location @redirect_to_v2_index {
+        rewrite ^ {{ $apiBasePath }}/gui/v2/index.html break;
+        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+      }
+      {{- end }}
 
       location {{ $apiBasePath }}/gui/ {
         proxy_intercept_errors on;

@@ -17,7 +17,7 @@ dependencies:
     version: 7.17.3
     repository: https://helm.elastic.co
   - name: jupyterhub
-    version: "4.3.2"
+    version: "4.4.2"
     repository: "https://jupyterhub.github.io/helm-chart/"
     condition: jupyterhub.enabled
   - name: temporal

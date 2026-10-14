@@ -134,6 +134,19 @@ nomad:
 > [!TIP]
 > To access the latest features and improvements, we recommend updating the `nomad.image.tag` to the latest stable version. You can find the available tags in the [GitHub Container Registry](https://github.com/fairmat-nfdi/nomad-distro-template/pkgs/container/nomad-distro-template).
 
+### GUI Version (`nomad.config.gui.default`)
+
+`<api_base_path>/gui/` opens the new GUI (v2) by default. The classic GUI (v1) stays available at `<api_base_path>/gui/v1/`, and all existing `<api_base_path>/gui/...` deep links keep opening it. A user's choice is remembered in the `nomad_gui_pref` cookie. Users can change it on the new GUI's `select-gui` page, under its settings, or with the "Open new GUI" button in the classic GUI.
+
+```yaml
+nomad:
+  config:
+    gui:
+      default: v2   # v2 (new GUI), select (ask users to choose), or v1 (classic GUI only)
+```
+
+> [!IMPORTANT]
+> `v2` and `select` require an image that includes the [`nomad-gui`](https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-gui) plugin, which serves the new GUI at `<api_base_path>/gui/v2/`. For images without it, set `default: v1`.
 
 ### Authentication (`nomad.config.keycloak`)
 

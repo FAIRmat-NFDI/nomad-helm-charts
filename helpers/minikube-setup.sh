@@ -5,22 +5,38 @@
 # Run from the repository root.
 #
 # Usage:
-#   ./helpers/minikube-setup.sh                    # HTTP (no TLS), central Keycloak
-#   ./helpers/minikube-setup.sh --tls              # HTTPS with self-signed cert-manager certificates
-#   ./helpers/minikube-setup.sh --local-keycloak   # in-cluster Keycloak (admin/admin)
+#   ./helpers/minikube-setup.sh                    # HTTPS with self-signed cert-manager certificates, central Keycloak
+#   ./helpers/minikube-setup.sh --no-tls           # plain HTTP (the new GUI cannot sign in over HTTP)
+#   ./helpers/minikube-setup.sh --local-keycloak   # in-cluster Keycloak (admin/admin), plain HTTP
+#
+# TLS is on by default: the new GUI signs in with WebCrypto, which browsers only
+# provide in secure contexts (HTTPS or localhost).
 
 set -euo pipefail
 
 # Parse flags
-USE_TLS=false
+USE_TLS=true
 LOCAL_KEYCLOAK=false
 for arg in "$@"; do
   case "$arg" in
     --tls) USE_TLS=true ;;
+    --no-tls) USE_TLS=false ;;
     --local-keycloak) LOCAL_KEYCLOAK=true ;;
     *) echo "Unknown argument: $arg"; exit 1 ;;
   esac
 done
+
+# The local Keycloak realm (local-keycloak-realm.json) and its ingress are
+# HTTP-only, so keep the whole demo on HTTP when it is used.
+if $LOCAL_KEYCLOAK && $USE_TLS; then
+  echo "Note: --local-keycloak is HTTP-only; disabling TLS. The new GUI cannot sign in"
+  echo "      over HTTP, use the classic GUI at /nomad-oasis/gui/v1/ instead."
+  USE_TLS=false
+fi
+SCHEME=http
+if $USE_TLS; then
+  SCHEME=https
+fi
 
 # Check prerequisites
 for cmd in docker minikube helm kubectl; do
@@ -195,7 +211,10 @@ echo "  2. Start tunnel (in separate terminal):"
 echo "     minikube tunnel"
 echo ""
 echo "  3. Open in browser:"
-echo "     http://$NOMAD_HOSTNAME/nomad-oasis/gui/"
+echo "     $SCHEME://$NOMAD_HOSTNAME/nomad-oasis/gui/"
+if $USE_TLS; then
+  echo "     (the certificate is self-signed: accept the browser warning once)"
+fi
 echo ""
 
 if [ "$LOCAL_KEYCLOAK" = "true" ]; then
