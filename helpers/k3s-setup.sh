@@ -21,6 +21,15 @@
 # Override the hostname (e.g. a real domain) with:
 #   NOMAD_HOSTNAME=demo.example.com ./helpers/k3s-setup.sh
 #
+# On a server with a public DNS name (e.g. a cloud VM with a floating IP), get a
+# trusted Let's Encrypt certificate instead of the self-signed one. The name must
+# already resolve to the server and ports 80/443 must be reachable from the
+# internet (HTTP-01 challenge); /etc/hosts is left alone:
+#   NOMAD_HOSTNAME=demo.example.com ./helpers/k3s-setup.sh --letsencrypt=you@example.com
+#
+# Arguments after `--` are passed to `helm upgrade --install`, e.g.
+#   ./helpers/k3s-setup.sh -- --set jupyterhub.hub.image.name=my-hub --set jupyterhub.hub.image.tag=dev
+#
 # Requirements:
 #   - sudo (for the /etc/hosts entry and the /app/.volumes data dirs)
 #   - host port 80 free (k3s servicelb binds it for the ingress controller)
@@ -31,14 +40,29 @@ set -euo pipefail
 # Parse flags
 USE_TLS=true
 LOCAL_KEYCLOAK=false
-for arg in "$@"; do
-  case "$arg" in
+LETSENCRYPT_EMAIL=""
+EXTRA_HELM_ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
     --tls) USE_TLS=true ;;
     --no-tls) USE_TLS=false ;;
     --local-keycloak) LOCAL_KEYCLOAK=true ;;
-    *) echo "Unknown argument: $arg"; exit 1 ;;
+    --letsencrypt=*) LETSENCRYPT_EMAIL="${1#--letsencrypt=}" ;;
+    --) shift; EXTRA_HELM_ARGS=("$@"); break ;;
+    *) echo "Unknown argument: $1"; exit 1 ;;
   esac
+  shift
 done
+
+if [ -n "$LETSENCRYPT_EMAIL" ]; then
+  if $LOCAL_KEYCLOAK || ! $USE_TLS; then
+    echo "Error: --letsencrypt cannot be combined with --no-tls or --local-keycloak."
+    exit 1
+  fi
+  TLS_ISSUER=letsencrypt-prod
+else
+  TLS_ISSUER=selfsigned-issuer
+fi
 
 # The local Keycloak realm (local-keycloak-realm.json) and its ingress are
 # HTTP-only, so keep the whole demo on HTTP when it is used.
@@ -62,7 +86,9 @@ NOMAD_HOSTNAME="${NOMAD_HOSTNAME:-nomad-oasis.local}"
 echo "=== NOMAD Oasis k3s Local Setup ==="
 echo "Hostname: $NOMAD_HOSTNAME"
 echo "Namespace: $NAMESPACE"
-if $USE_TLS; then
+if [ -n "$LETSENCRYPT_EMAIL" ]; then
+  echo "TLS: enabled (Let's Encrypt via cert-manager, contact $LETSENCRYPT_EMAIL)"
+elif $USE_TLS; then
   echo "TLS: enabled (self-signed via cert-manager)"
 fi
 echo ""
@@ -119,8 +145,11 @@ sudo chmod -R 755 /app/.volumes/fs
 # Ensure $NOMAD_HOSTNAME resolves to 127.0.0.1 so the browser reaches the ingress.
 # Self-correct a stale entry (e.g. a leftover minikube IP from a prior setup)
 # rather than skipping when the hostname is already present but mispointed.
+# Skipped with --letsencrypt: the name is served by public DNS.
 HOST_RE="$(printf '%s' "$NOMAD_HOSTNAME" | sed 's/[.]/\\./g')"
-if ! grep -qE "[[:space:]]${HOST_RE}([[:space:]]|\$)" /etc/hosts; then
+if [ -n "$LETSENCRYPT_EMAIL" ]; then
+  echo "  Using public DNS for $NOMAD_HOSTNAME (not touching /etc/hosts)"
+elif ! grep -qE "[[:space:]]${HOST_RE}([[:space:]]|\$)" /etc/hosts; then
   echo "  Adding '127.0.0.1 $NOMAD_HOSTNAME' to /etc/hosts"
   echo "127.0.0.1 $NOMAD_HOSTNAME" | sudo tee -a /etc/hosts >/dev/null
 elif ! grep -qE "^127\.0\.0\.1[[:space:]].*${HOST_RE}([[:space:]]|\$)" /etc/hosts; then
@@ -136,22 +165,34 @@ helm dependency update .
 
 if $USE_TLS; then
   echo ""
-  echo "Step 5b: Installing cert-manager and the self-signed issuer..."
+  echo "Step 5b: Installing cert-manager and the $TLS_ISSUER issuer..."
   helm repo add jetstack https://charts.jetstack.io --force-update
   helm upgrade --install cert-manager jetstack/cert-manager \
     --namespace cert-manager --create-namespace \
     --set crds.enabled=true \
     --wait --timeout 5m
-  $KUBECTL apply -f custom-values/tls-issuer/selfsigned.yaml
-  $KUBECTL wait clusterissuer/selfsigned-issuer --for=condition=Ready --timeout=90s
+  if [ -n "$LETSENCRYPT_EMAIL" ]; then
+    # The HTTP-01 solver ingress uses class nginx, which the Traefik Kubernetes
+    # Ingress NGINX provider serves (see Step 3).
+    sed "s/your@email.com/$LETSENCRYPT_EMAIL/" custom-values/tls-issuer/letsencrypt.yaml \
+      | $KUBECTL apply -f -
+  else
+    $KUBECTL apply -f custom-values/tls-issuer/selfsigned.yaml
+  fi
+  $KUBECTL wait "clusterissuer/$TLS_ISSUER" --for=condition=Ready --timeout=90s
 fi
 
 echo ""
 echo "Step 6: Creating namespace and secrets..."
 $KUBECTL create namespace "$NAMESPACE" --dry-run=client -o yaml | $KUBECTL apply -f -
-$KUBECTL create secret generic nomad-hub-service-api-token \
-  --from-literal=token=secret-token \
-  -n "$NAMESPACE" --dry-run=client -o yaml | $KUBECTL apply -f -
+# The hub service token grants admin on the JupyterHub API, which is reachable
+# through the ingress. Generate a random one on first install and keep it on
+# re-runs. The hub and NOMAD both read it from this secret.
+if ! $KUBECTL get secret nomad-hub-service-api-token -n "$NAMESPACE" &>/dev/null; then
+  $KUBECTL create secret generic nomad-hub-service-api-token \
+    --from-literal=token="$(openssl rand -hex 32)" \
+    -n "$NAMESPACE"
+fi
 
 echo ""
 echo "Step 7: Installing NOMAD Oasis chart..."
@@ -165,13 +206,15 @@ HELM_ARGS=(
   # policies that would otherwise block the NOMAD app/worker from reaching the
   # hub API (Errno 111 / connection refused).
   -f custom-values/k3s.yaml
+  --set "nomad.secrets.north.hubServiceApiToken.existingSecret=nomad-hub-service-api-token"
 )
 if $USE_TLS; then
   # minikube-selfsigned.yaml targets nomad-oasis.local; the overrides below
-  # retarget its host-bearing fields to $NOMAD_HOSTNAME.
+  # retarget its host-bearing fields to $NOMAD_HOSTNAME and pick the issuer.
   HELM_ARGS+=(
     -f custom-values/tls.yaml
     -f custom-values/minikube-selfsigned.yaml
+    --set "nomad.ingress.certManager.issuerName=$TLS_ISSUER"
     --set "jupyterhub.hub.extraEnv.NOMAD_OASIS_URL=https://$NOMAD_HOSTNAME/nomad-oasis"
     --set "jupyterhub.ingress.tls[0].hosts[0]=$NOMAD_HOSTNAME"
     --set "jupyterhub.ingress.tls[0].secretName=nomad-oasis-jupyterhub-tls"
@@ -211,6 +254,8 @@ if $LOCAL_KEYCLOAK; then
   )
 fi
 
+HELM_ARGS+=("${EXTRA_HELM_ARGS[@]}")
+
 helm upgrade --install "$RELEASE_NAME" . "${HELM_ARGS[@]}" -n "$NAMESPACE" --timeout 15m
 
 echo ""
@@ -226,7 +271,10 @@ $KUBECTL get pods -n "$NAMESPACE"
 echo ""
 echo "Open the demo at:"
 echo "  $SCHEME://$NOMAD_HOSTNAME/nomad-oasis/gui/"
-if $USE_TLS; then
+if [ -n "$LETSENCRYPT_EMAIL" ]; then
+  echo "  (the certificate can take a minute to be issued:"
+  echo "   $KUBECTL get certificate -n $NAMESPACE)"
+elif $USE_TLS; then
   echo "  (the certificate is self-signed: accept the browser warning once)"
 fi
 echo ""
