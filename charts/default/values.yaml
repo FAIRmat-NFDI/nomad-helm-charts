@@ -30,7 +30,9 @@ nomad:
   config:
     services:
       api_host: localhost
-      api_base_path: /nomad-oasis
+      # Where NOMAD mounts its API and the other backend services (NORTH, docs,
+      # alive, ...). The GUI is served at nomad.proxy.publicPath.
+      api_base_path: /backend
       api_port: 80
       https: false
       upload_limit: 10
@@ -136,12 +138,30 @@ nomad:
 
     north:
       enabled: false
+      # Use the NORTH API of the refactored hub (hub.image)
+      enable_new_hub_api: true
       hub_service_api_token: secret-token
       tools: {}
+
+    dashboards:
+      # Serve dashboard plugin entry points and show the dashboards menu item in the GUI
+      enabled: true
+      # CSP frame-ancestors sources that may embed dashboards in an iframe
+      frame_ancestors:
+        - "'self'"
 
     gui:
       debug: false
       gzip: true
+      # GUI served at nomad.proxy.publicPath to users without a saved
+      # preference (nomad_gui_pref cookie), and the fallback for links below
+      # nomad.proxy.legacyPath:
+      #   select: the new GUI's page for choosing between the GUIs, as in
+      #           nomad-distro-template (requires the nomad-gui plugin)
+      #   v2:     the new GUI (requires the nomad-gui plugin in the image)
+      #   v1:     the classic GUI; use this for images without nomad-gui
+      # The classic GUI stays available at <publicPath>/gui/.
+      default: select
       config: {}
 
     oasis:
@@ -271,6 +291,21 @@ nomad:
         value: ""
 
   proxy:
+    # Public path of the GUI. With "/", the new GUI is served at the root, the
+    # classic GUI at /gui/ and nomad.config.services.api_base_path is reserved
+    # for the backend services, as in nomad-distro-template. Leave empty (or
+    # set to api_base_path) for the former layout, where the GUIs and services
+    # share one base path (e.g. /nomad-oasis/gui/).
+    publicPath: /
+    # Former base path kept reachable after moving to the layout above: old
+    # GUI links are redirected and old API/service URLs are rewritten to the
+    # backend path. Set to "" to disable.
+    legacyPath: /nomad-oasis
+    # Redirect <publicPath>/docs and <api_base_path>/docs to this external
+    # documentation, keeping the page path. NOMAD 2 images do not ship the
+    # documentation (the app answers /docs with an error); its GUI links to
+    # the same site. Set to "" to serve the docs built into older images.
+    docsUrl: https://docs.nomad-lab.eu
     replicaCount: 1
     timeout: 60
     editTimeout: 60
@@ -584,6 +619,15 @@ jupyterhub:
         # It is important to disable nonPrivateIPs otherwise the networkPolicy's will be silently ignored
         nonPrivateIPs: false
   hub:
+    # NORTH hub image with the NORTH KubeSpawner, built from images/k8s in
+    # https://github.com/FAIRmat-NFDI/nomad-north. Its z2jh base version must
+    # match the jupyterhub chart version in Chart.yaml.
+    image:
+      name: ghcr.io/fairmat-nfdi/nomad-north-k8s
+      tag: main
+    # Must be <nomad.config.services.api_base_path>/north, where the proxy
+    # forwards NORTH requests to the hub.
+    baseUrl: /backend/north
     resources:
       requests:
         memory: "256Mi"
@@ -591,6 +635,8 @@ jupyterhub:
       limits:
         memory: "512Mi"
     extraEnv:
+      # NOMAD API that the spawner gets the tools and mounts from
+      NOMAD_API_URL: http://nomad-oasis-app:8000/backend/api/v1
       NOMAD_NORTH_HUB_SERVICE_API_TOKEN:
         valueFrom:
           secretKeyRef:
@@ -611,14 +657,17 @@ jupyterhub:
         token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
         userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
         login_service: keycloak
+        # Keycloak only serves the userdata_url for OpenID Connect tokens.
+        scope:
+          - openid
+          - profile
         username_key: preferred_username
         userdata_params:
           state: state
     extraConfig:
-      01-prespawn-hook.py: |
+      # The tools are spawned by the NORTH spawner of the hub image.
+      01-nomad-service.py: |
         import os
-        import requests
-        import asyncio
 
         hub_service_api_token = os.getenv('NOMAD_NORTH_HUB_SERVICE_API_TOKEN')
 
@@ -631,62 +680,6 @@ jupyterhub:
             }
         )
 
-        async def pre_spawn_hook(spawner):
-            await spawner.load_user_options()
-            username = spawner.user.name
-
-            spawner.log.info(f"username: {username}")
-            spawner.log.debug(f'Configuring spawner for named server {spawner.name}')
-
-            if spawner.handler.current_user.name != 'nomad-service':
-                # Do nothing, will only launch the default image with no volumes.
-                return
-
-            user_home = spawner.user_options.get('user_home')
-            spawner.log.info(f"user_home: {user_home}")
-            if user_home:
-                spawner.volumes.append({
-                    'name': 'user-home',
-                    'hostPath': {'path': user_home['host_path']}
-                })
-                spawner.volume_mounts.append({
-                    'name': 'user-home',
-                    'mountPath': user_home['mount_path'],
-                    'readOnly': False
-                })
-
-            uploads = spawner.user_options.get('uploads', [])
-            spawner.log.info(f"uploads: {uploads}")
-            for (i, upload) in enumerate(uploads):
-                spawner.volumes.append({
-                    'name': f"uploads-{i}",
-                    'hostPath': {'path': upload['host_path']}
-                })
-                spawner.volume_mounts.append({
-                    'name': f"uploads-{i}",
-                    'mountPath': upload['mount_path'],
-                    'readOnly': False
-                })
-
-            environment = spawner.user_options.get('environment', {})
-            spawner.environment.update(environment)
-
-            tool = spawner.user_options.get('tool')
-            if tool:
-                spawner.image = tool.get('image')
-                spawner.cmd = tool.get('cmd')
-
-                # Workaround to have specific default_url for specific containers without using profiles
-                if tool.get('default_url'):
-                  spawner.default_url = tool.get('default_url')
-
-                # Workaround for webtop based images (no connection to jupyterhub itself)
-                if tool.get('privileged'):
-                    spawner.privileged = True
-                    spawner.allow_privilege_escalation = True
-                    spawner.uid = 0
-
-        c.Spawner.pre_spawn_hook = pre_spawn_hook
         c.OAuthenticator.allow_all = True
 
   cull:

@@ -20,7 +20,7 @@ nomad:
   config:
     services:
       api_host: localhost           # Used by ingress
-      api_base_path: /nomad-oasis   # Used by ingress, nginx, probes
+      api_base_path: /backend       # Backend services; used by ingress, nginx, probes
       api_port: 80
       https: false
     fs:
@@ -105,7 +105,7 @@ nomad:
   config:
     services:
       api_host: my-lab.org            # Your domain or hostname
-      api_base_path: /nomad-oasis     # URL path prefix
+      api_base_path: /backend         # Backend path prefix (GUI: nomad.proxy.publicPath)
       https: true                     # Enable for production
 ```
 
@@ -134,6 +134,40 @@ nomad:
 > [!TIP]
 > To access the latest features and improvements, we recommend updating the `nomad.image.tag` to the latest stable version. You can find the available tags in the [GitHub Container Registry](https://github.com/fairmat-nfdi/nomad-distro-template/pkgs/container/nomad-distro-template).
 
+### URL Layout and GUI Version (`nomad.proxy`, `nomad.config.gui.default`)
+
+The proxy uses the same URL layout as [nomad-distro-template](https://github.com/FAIRmat-NFDI/nomad-distro-template):
+
+| Path | Serves |
+|---|---|
+| `/` | New GUI (v2), including its `/select-gui` page |
+| `/gui/` | Classic GUI (v1) |
+| `/backend/` | NOMAD API and other backend services, e.g. `/backend/api/v1`, `/backend/north`, `/backend/alive` |
+| `/docs`, `/backend/docs` | Redirect to the documentation at `nomad.proxy.docsUrl` (https://docs.nomad-lab.eu); set it to `""` to serve the docs built into older images |
+| `/nomad-oasis/` | Former base path: GUI links are redirected, API/service URLs are rewritten to `/backend/` |
+
+```yaml
+nomad:
+  config:
+    services:
+      api_base_path: /backend   # backend services
+    gui:
+      default: select           # select (ask users to choose), v2 (new GUI), or v1 (classic GUI)
+  proxy:
+    publicPath: /               # GUI
+    legacyPath: /nomad-oasis    # "" to disable the compatibility routes
+    docsUrl: https://docs.nomad-lab.eu  # "" to serve the docs from the image
+jupyterhub:
+  hub:
+    baseUrl: /backend/north     # <api_base_path>/north
+```
+
+Without a saved preference, `/` follows `gui.default`: by default it redirects to the `/select-gui` page, as in nomad-distro-template; `v2` serves the new GUI directly and `v1` redirects to `/gui/`. A user's choice is remembered in the `nomad_gui_pref` cookie; users can change it on the `/select-gui` page, in the new GUI's settings, or with the "Open new GUI" button in the classic GUI. Old links below `/nomad-oasis/gui/...` are mapped to the matching page of the chosen GUI.
+
+`publicPath` can also be a prefix (e.g. `/staging` with `api_base_path: /staging/backend`). To keep the former layout, where both GUIs and the services share one base path (`/nomad-oasis/gui/`, `/nomad-oasis/gui/v1/`, `/nomad-oasis/api/v1`), set `publicPath` to the same value as `api_base_path`, and point `jupyterhub.hub.baseUrl`, `NOMAD_API_URL` and the OAuth callback URL back to it.
+
+> [!IMPORTANT]
+> `v2` and `select` require an image that includes the [`nomad-gui`](https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-gui) plugin. For images without it, set `gui.default: v1`.
 
 ### Authentication (`nomad.config.keycloak`)
 
@@ -362,12 +396,12 @@ helm install nomad-oasis ./charts/default \
 ```bash
 # Via port-forward
 kubectl port-forward svc/nomad-oasis-proxy 8080:80
-# Open http://localhost:8080/nomad-oasis/gui/
+# Open http://localhost:8080/
 
 # Via ingress (add to /etc/hosts)
 echo "$(minikube ip) nomad-oasis.local" | sudo tee -a /etc/hosts
 minikube tunnel
-# Open http://nomad-oasis.local/nomad-oasis/gui/
+# Open http://nomad-oasis.local/
 ```
 
 ### Option B: Kind
@@ -448,20 +482,20 @@ helm install nomad-oasis ./charts/default \
 
 ```bash
 # Open directly (ports 80/443 are mapped to localhost)
-# http://localhost/nomad-oasis/gui/
+# http://localhost/
 ```
 
 ### Test Endpoints
 
 ```bash
 # Alive check
-curl http://localhost:8080/nomad-oasis/alive
+curl http://localhost:8080/backend/alive
 
 # API info
-curl http://localhost:8080/nomad-oasis/api/v1/info
+curl http://localhost:8080/backend/api/v1/info
 
 # GUI
-curl -I http://localhost:8080/nomad-oasis/gui/
+curl -I http://localhost:8080/
 ```
 
 ### Uninstall
@@ -612,11 +646,11 @@ If NORTH is enabled, JupyterHub also needs OAuth configuration pointing to the s
 ```yaml
 jupyterhub:
   hub:
-    baseUrl: "/nomad-oasis/north"  # Must match api_base_path + /north
+    baseUrl: "/backend/north"  # Must match api_base_path + /north
     config:
       GenericOAuthenticator:
         client_id: nomad_public
-        oauth_callback_url: http://your-host/nomad-oasis/north/hub/oauth_callback
+        oauth_callback_url: http://your-host/backend/north/hub/oauth_callback
         authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/auth
         token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
         userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
@@ -657,11 +691,11 @@ jupyterhub:
   enabled: true
   fullnameOverride: "nomad-oasis-jupyterhub"
   hub:
-    baseUrl: "/nomad-oasis/north"
+    baseUrl: "/backend/north"
     config:
       GenericOAuthenticator:
         client_id: nomad_public
-        oauth_callback_url: http://your-host/nomad-oasis/north/hub/oauth_callback
+        oauth_callback_url: http://your-host/backend/north/hub/oauth_callback
         authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/auth
         token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
         userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo

@@ -6,7 +6,7 @@ type: application
 # This is the chart version. This version number should be incremented each time you make changes
 # to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: 1.4.4
+version: 1.5.0
 
 # NOMAD application version being deployed
 appVersion: "1.4.3"
@@ -17,7 +17,7 @@ dependencies:
     version: 7.17.3
     repository: https://helm.elastic.co
   - name: jupyterhub
-    version: "3.2.1"
+    version: "4.4.2"
     repository: "https://jupyterhub.github.io/helm-chart/"
     condition: jupyterhub.enabled
   - name: temporal

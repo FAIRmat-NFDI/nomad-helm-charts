@@ -37,7 +37,7 @@ nomad:
   config:
     services:
       api_host: nomad-oasis.local
-      api_base_path: /nomad-oasis
+      api_base_path: /backend
       api_port: 80
       https: false
       upload_limit: 10
@@ -71,7 +71,7 @@ nomad:
 
     meta:
       service: app
-      homepage: http://localhost/nomad-oasis
+      homepage: http://localhost
       source_url: https://github.com/fairmat-nfdi/nomad-distro-template
       maintainer_email: support@nomad-lab.eu
       footer_links: []
@@ -282,19 +282,38 @@ jupyterhub:
   enabled: true
   fullnameOverride: "nomad-oasis-jupyterhub"
   hub:
-    baseUrl: "/nomad-oasis/north"
+    baseUrl: "/backend/north"
     config:
       GenericOAuthenticator:
         client_id: nomad_public
-        oauth_callback_url: http://nomad-oasis.local/nomad-oasis/north/hub/oauth_callback
+        oauth_callback_url: http://nomad-oasis.local/backend/north/hub/oauth_callback
         authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/auth
         token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
         userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
     extraEnv:
-      NOMAD_OASIS_URL: "http://nomad-oasis-proxy/nomad-oasis"
+      NOMAD_OASIS_URL: "http://nomad-oasis-proxy"
     db:
       type: sqlite-memory
+    # The z2jh NetworkPolicies only admit traffic to the hub from pods labelled
+    # hub.jupyter.org/network-access-hub=true, which the NOMAD app/worker pods
+    # are not. minikube and kind (kindnet) enforce them, so the NOMAD -> hub API
+    # calls time out when launching a tool. They add no isolation on a local
+    # single-user demo, so they are disabled here (hub, proxy and singleuser).
+    networkPolicy:
+      enabled: false
+    extraConfig:
+      # Workaround for NORTH hub images whose form.html uses a `markdown` filter
+      # they do not register: every hub page that renders the spawner options
+      # (spawn-pending, home, token) fails with a 500. Fall back to escaped
+      # plain text until the image registers the filter itself.
+      02-north-markdown-filter.py: |
+        import jinja2.defaults
+        from markupsafe import escape
+
+        jinja2.defaults.DEFAULT_FILTERS.setdefault("markdown", escape)
   singleuser:
+    networkPolicy:
+      enabled: false
     podNameTemplate: "nomad-oasis-north-{username}--{servername}"
     uid: 1000
     fsGid: 100
@@ -312,6 +331,9 @@ jupyterhub:
       limit: 2G
       guarantee: 512M
   proxy:
+    chp:
+      networkPolicy:
+        enabled: false
     service:
       type: ClusterIP
   ingress:

@@ -21,7 +21,7 @@ nomad:
       # quick test without a domain, an nip.io name that resolves to the IP, e.g.
       # <IP>.nip.io (the static IP with ".nip.io" appended).
       api_host: <DOMAIN>
-      api_base_path: /nomad-oasis
+      api_base_path: /backend
       https: false   # set true after enabling HTTPS (see README)
 
   # Shared NOMAD data volumes (public, staging, tmp) are mounted concurrently by

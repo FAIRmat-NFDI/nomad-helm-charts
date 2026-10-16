@@ -97,7 +97,7 @@ jupyterhub:
     config:
       GenericOAuthenticator:
         client_id: nomad_public
-        oauth_callback_url: http://nomad-oasis.local/nomad-oasis/north/hub/oauth_callback
+        oauth_callback_url: http://nomad-oasis.local/backend/north/hub/oauth_callback
         authorize_url: http://nomad-oasis.local/auth/realms/nomad-oasis/protocol/openid-connect/auth
         token_url: http://nomad-oasis.local/auth/realms/nomad-oasis/protocol/openid-connect/token
         userdata_url: http://nomad-oasis.local/auth/realms/nomad-oasis/protocol/openid-connect/userinfo
