@@ -48,7 +48,7 @@ nomad:
   config:
     services:
       api_host: your-domain.com
-      api_base_path: /nomad-oasis
+      api_base_path: /backend
   ingress:
     enabled: true
 ```
@@ -75,7 +75,7 @@ Clone this repository and install directly from the charts directory.
 ./helpers/minikube-setup.sh
 ```
 
-Both scripts serve the demo over HTTPS with a self-signed certificate (cert-manager), so accept the browser warning once. The new GUI signs in with WebCrypto, which browsers only allow on HTTPS or `localhost`. Pass `--no-tls` for plain HTTP; `--local-keycloak` always uses HTTP. In both cases only the classic GUI (`/nomad-oasis/gui/v1/`) can sign in.
+Both scripts serve the demo over HTTPS with a self-signed certificate (cert-manager), so accept the browser warning once. Pass `--no-tls` for plain HTTP; `--local-keycloak` always uses HTTP. Over HTTP, the new GUI can only sign in with `nomad-gui` newer than 2.0.0rc2, which skips PKCE when `services.https` is off; older versions need WebCrypto, which browsers only allow on HTTPS or `localhost`, so use the classic GUI (`/gui/`) there. Copy-to-clipboard buttons in the new GUI also need HTTPS.
 
 ### Using Kind
 

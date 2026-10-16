@@ -12,11 +12,13 @@
 #
 # Run from the repository root:
 #   ./helpers/k3s-setup.sh                    # HTTPS (self-signed), central NOMAD Keycloak (default)
-#   ./helpers/k3s-setup.sh --no-tls           # plain HTTP (the new GUI cannot sign in over HTTP)
+#   ./helpers/k3s-setup.sh --no-tls           # plain HTTP
 #   ./helpers/k3s-setup.sh --local-keycloak   # in-cluster Keycloak (admin/admin), plain HTTP
 #
-# TLS is on by default: the new GUI signs in with WebCrypto, which browsers only
-# provide in secure contexts (HTTPS or localhost).
+# TLS is on by default: browsers only provide WebCrypto and the clipboard API in
+# secure contexts (HTTPS or localhost). Over HTTP, the new GUI can sign in only
+# with nomad-gui newer than 2.0.0rc2 (it skips PKCE when services.https is off);
+# with older versions use the classic GUI at /gui/.
 #
 # Override the hostname (e.g. a real domain) with:
 #   NOMAD_HOSTNAME=demo.example.com ./helpers/k3s-setup.sh
@@ -67,8 +69,9 @@ fi
 # The local Keycloak realm (local-keycloak-realm.json) and its ingress are
 # HTTP-only, so keep the whole demo on HTTP when it is used.
 if $LOCAL_KEYCLOAK && $USE_TLS; then
-  echo "Note: --local-keycloak is HTTP-only; disabling TLS. The new GUI cannot sign in"
-  echo "      over HTTP, use the classic GUI at /nomad-oasis/gui/v1/ instead."
+  echo "Note: --local-keycloak is HTTP-only; disabling TLS. The new GUI signs in over"
+  echo "      HTTP only with nomad-gui newer than 2.0.0rc2; otherwise use the classic"
+  echo "      GUI at /gui/."
   USE_TLS=false
 fi
 SCHEME=http
@@ -215,14 +218,14 @@ if $USE_TLS; then
     -f custom-values/tls.yaml
     -f custom-values/minikube-selfsigned.yaml
     --set "nomad.ingress.certManager.issuerName=$TLS_ISSUER"
-    --set "jupyterhub.hub.extraEnv.NOMAD_OASIS_URL=https://$NOMAD_HOSTNAME/nomad-oasis"
+    --set "jupyterhub.hub.extraEnv.NOMAD_OASIS_URL=https://$NOMAD_HOSTNAME"
     --set "jupyterhub.ingress.tls[0].hosts[0]=$NOMAD_HOSTNAME"
     --set "jupyterhub.ingress.tls[0].secretName=nomad-oasis-jupyterhub-tls"
   )
 fi
 HELM_ARGS+=(
   --set "nomad.config.services.api_host=$NOMAD_HOSTNAME"
-  --set "jupyterhub.hub.config.GenericOAuthenticator.oauth_callback_url=$SCHEME://$NOMAD_HOSTNAME/nomad-oasis/north/hub/oauth_callback"
+  --set "jupyterhub.hub.config.GenericOAuthenticator.oauth_callback_url=$SCHEME://$NOMAD_HOSTNAME/backend/north/hub/oauth_callback"
   --set "jupyterhub.ingress.hosts[0]=$NOMAD_HOSTNAME"
 )
 
@@ -270,7 +273,7 @@ echo "=== Installation Complete ==="
 $KUBECTL get pods -n "$NAMESPACE"
 echo ""
 echo "Open the demo at:"
-echo "  $SCHEME://$NOMAD_HOSTNAME/nomad-oasis/gui/"
+echo "  $SCHEME://$NOMAD_HOSTNAME/"
 if [ -n "$LETSENCRYPT_EMAIL" ]; then
   echo "  (the certificate can take a minute to be issued:"
   echo "   $KUBECTL get certificate -n $NAMESPACE)"

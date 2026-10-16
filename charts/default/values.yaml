@@ -30,7 +30,9 @@ nomad:
   config:
     services:
       api_host: localhost
-      api_base_path: /nomad-oasis
+      # Where NOMAD mounts its API and the other backend services (NORTH, docs,
+      # alive, ...). The GUI is served at nomad.proxy.publicPath.
+      api_base_path: /backend
       api_port: 80
       https: false
       upload_limit: 10
@@ -151,14 +153,15 @@ nomad:
     gui:
       debug: false
       gzip: true
-      # GUI served at <api_base_path>/gui/ to users without a saved preference
-      # (nomad_gui_pref cookie):
+      # GUI served at nomad.proxy.publicPath to users without a saved
+      # preference (nomad_gui_pref cookie), and the fallback for links below
+      # nomad.proxy.legacyPath:
+      #   select: the new GUI's page for choosing between the GUIs, as in
+      #           nomad-distro-template (requires the nomad-gui plugin)
       #   v2:     the new GUI (requires the nomad-gui plugin in the image)
-      #   select: the new GUI's page for choosing between the GUIs (requires nomad-gui)
-      #   v1:     the classic GUI only; use this for images without nomad-gui
-      # With v2/select, the classic GUI stays available at /gui/v1/ and under
-      # all of its existing /gui/... deep links.
-      default: v2
+      #   v1:     the classic GUI; use this for images without nomad-gui
+      # The classic GUI stays available at <publicPath>/gui/.
+      default: select
       config: {}
 
     oasis:
@@ -288,6 +291,16 @@ nomad:
         value: ""
 
   proxy:
+    # Public path of the GUI. With "/", the new GUI is served at the root, the
+    # classic GUI at /gui/ and nomad.config.services.api_base_path is reserved
+    # for the backend services, as in nomad-distro-template. Leave empty (or
+    # set to api_base_path) for the former layout, where the GUIs and services
+    # share one base path (e.g. /nomad-oasis/gui/).
+    publicPath: /
+    # Former base path kept reachable after moving to the layout above: old
+    # GUI links are redirected and old API/service URLs are rewritten to the
+    # backend path. Set to "" to disable.
+    legacyPath: /nomad-oasis
     replicaCount: 1
     timeout: 60
     editTimeout: 60
@@ -607,6 +620,9 @@ jupyterhub:
     image:
       name: ghcr.io/fairmat-nfdi/nomad-north-k8s
       tag: main
+    # Must be <nomad.config.services.api_base_path>/north, where the proxy
+    # forwards NORTH requests to the hub.
+    baseUrl: /backend/north
     resources:
       requests:
         memory: "256Mi"
@@ -615,7 +631,7 @@ jupyterhub:
         memory: "512Mi"
     extraEnv:
       # NOMAD API that the spawner gets the tools and mounts from
-      NOMAD_API_URL: http://nomad-oasis-app:8000/nomad-oasis/api/v1
+      NOMAD_API_URL: http://nomad-oasis-app:8000/backend/api/v1
       NOMAD_NORTH_HUB_SERVICE_API_TOKEN:
         valueFrom:
           secretKeyRef:

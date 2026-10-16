@@ -47,7 +47,7 @@ nomad:
   config:
     services:
       api_host: localhost
-      api_base_path: /nomad-oasis
+      api_base_path: /backend
       api_port: 80
       https: false
       upload_limit: 10
@@ -81,7 +81,7 @@ nomad:
 
     meta:
       service: app
-      homepage: http://localhost/nomad-oasis
+      homepage: http://localhost
       source_url: https://github.com/fairmat-nfdi/nomad-distro-template
       maintainer_email: support@nomad-lab.eu
       footer_links: []
@@ -201,6 +201,10 @@ nomad:
       key: password
       value: ""
       autoGenerate: true
+    north:
+      hubServiceApiToken:
+        existingSecret: "nomad-hub-service-api-token"
+        key: token
 
   ingress:
     enabled: true
@@ -283,16 +287,16 @@ jupyterhub:
   enabled: true
   fullnameOverride: "nomad-oasis-jupyterhub"
   hub:
-    baseUrl: "/nomad-oasis/north"
+    baseUrl: "/backend/north"
     config:
       GenericOAuthenticator:
         client_id: nomad_public
-        oauth_callback_url: http://localhost/nomad-oasis/north/hub/oauth_callback
+        oauth_callback_url: http://localhost/backend/north/hub/oauth_callback
         authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/auth
         token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
         userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
     extraEnv:
-      NOMAD_OASIS_URL: "http://nomad-oasis-proxy/nomad-oasis"
+      NOMAD_OASIS_URL: "http://nomad-oasis-proxy"
     db:
       type: sqlite-memory
     # The z2jh NetworkPolicies only admit traffic to the hub from pods labelled

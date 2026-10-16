@@ -1,5 +1,24 @@
 {{- if .Values.nomad.enabled -}}
 {{- $config := .Values.nomad.config -}}
+{{- $app := printf "http://%s-app:8000" (include "nomad.fullname" .) -}}
+{{- $backendPath := include "nomad.proxy.backendPath" . -}}
+{{- $backendPrefix := include "nomad.proxy.backendPrefix" . -}}
+{{- $publicPath := include "nomad.proxy.publicPath" . -}}
+{{- $publicPrefix := include "nomad.proxy.publicPrefix" . -}}
+{{- $split := ne $backendPath $publicPath -}}
+{{- $guiDefault := $config.gui.default | default "select" -}}
+{{- if not (has $guiDefault (list "v1" "v2" "select")) }}
+{{- fail "nomad.config.gui.default must be one of: v1, v2, select" }}
+{{- end }}
+{{- if and $split (eq $backendPath "/") }}
+{{- fail "nomad.config.services.api_base_path must not be / when nomad.proxy.publicPath differs from it" }}
+{{- end }}
+{{- /* The legacy path only applies to the split layout, and not when it is
+       still in use as the backend or public path. */ -}}
+{{- $legacyPath := trimSuffix "/" (.Values.nomad.proxy.legacyPath | default "") -}}
+{{- if or (not $split) (eq $legacyPath $backendPath) (eq $legacyPath $publicPath) }}
+{{- $legacyPath = "" }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -9,11 +28,6 @@ metadata:
     app.kubernetes.io/component: proxy
 data:
   nginx.conf: |
-    {{- $apiBasePath := $config.services.api_base_path }}
-    {{- $guiDefault := $config.gui.default | default "v2" }}
-    {{- if not (has $guiDefault (list "v1" "v2" "select")) }}
-    {{- fail "nomad.config.gui.default must be one of: v1, v2, select" }}
-    {{- end }}
     {{- if $config.north.enabled }}
     # top-level http config for websocket headers
     # If Upgrade is defined, Connection = upgrade
@@ -21,6 +35,27 @@ data:
     map $http_upgrade $connection_upgrade {
         default upgrade;
         ''      close;
+    }
+    {{- end }}
+    {{- if $legacyPath }}
+    # GUI selector redirects already contain query parameters. Append the
+    # original search arguments with '&' so they remain separate parameters.
+    map $args $gui_selector_args {
+        ''      '';
+        default '&$args';
+    }
+    # `$request_uri` retains the client's percent encoding. Use it for the
+    # selector handoff so reserved characters in nested paths do not become
+    # selector query delimiters before the GUI can reconstruct the target URL.
+    # The handoff values live in the fragment because fragments are not parsed
+    # as query parameters (`&` is therefore safe inside a path value).
+    map $request_uri $gui_selector_entry_fragment {
+        default '';
+        ~^{{ $legacyPath }}/gui/(?:search/[^/]+/entry/id|entry/id|(?:user/uploads/upload/id|upload/id|user/search/upload/id)/[^/]+/entry/id|(?:dataset|user/datasets/dataset|user/search/dataset)/id/[^/]+/entry/id)/[^/?]+(?<raw_gui_entry_path>/[^?]+)(?:\?.*)?$ "#nomad-entry-path=$raw_gui_entry_path";
+    }
+    map $request_uri $gui_selector_file_fragment {
+        default '';
+        ~^{{ $legacyPath }}/gui/(?:user/uploads/upload/id|upload/id|user/search/upload/id)/[^/]+/files/(?<raw_gui_file_path>[^?]+)(?:\?.*)?$ "#nomad-file-path=$raw_gui_file_path";
     }
     {{- end }}
     {{- if $config.temporal.ui_enabled }}
@@ -62,20 +97,367 @@ data:
           application/json;
       {{- end }}
 
+      {{- if or (not $split) (ne $publicPath "/") }}
       location / {
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass {{ $app }};
+      }
+      {{- end }}
+
+      {{- if $split }}
+      # URL layout:
+      #   {{ $publicPrefix }}/             new GUI (with /select-gui and the nomad_gui_pref cookie)
+      #   {{ $publicPrefix }}/gui/         classic GUI
+      #   {{ $backendPrefix }}/     NOMAD backend (API, NORTH, docs, alive, ...)
+      {{- if $legacyPath }}
+      #   {{ $legacyPath }}/ former base path, redirected/rewritten to the layout above
+      {{- end }}
+      #
+      # NOMAD serves both GUIs below the backend path. The proxy maps them to
+      # the public paths and replaces the backend base in their static
+      # responses, so assets and browser routing stay below the public paths.
+      # Upstream compression is disabled while filtering; nginx gzips the
+      # substituted response afterwards.
+      {{- if ne $publicPath "/" }}
+      location = {{ $publicPath }} {
+        return 302 {{ $publicPrefix }}/$is_args$args;
+      }
+      {{- end }}
+      location = {{ $publicPrefix }}/ {
+        error_page 418 = @serve_v2_root;
+        if ($cookie_nomad_gui_pref = "v1") {
+          return 302 {{ $publicPrefix }}/gui/$is_args$args;
+        }
+        if ($cookie_nomad_gui_pref = "v2") {
+          return 418;
+        }
+        {{- if eq $guiDefault "select" }}
+        return 302 {{ $publicPrefix }}/select-gui$is_args$args;
+        {{- else if eq $guiDefault "v1" }}
+        return 302 {{ $publicPrefix }}/gui/$is_args$args;
+        {{- else }}
+        return 418;
+        {{- end }}
       }
 
-      location = {{ $apiBasePath }} {
-        return 301 {{ $apiBasePath }}/gui/$is_args$args;
+      location @serve_v2_root {
+        rewrite ^ {{ $backendPrefix }}/gui/v2/ break;
+        proxy_set_header Accept-Encoding "";
+        sub_filter '{{ $backendPrefix }}/gui/v2' '{{ $publicPrefix }}';
+        sub_filter_types text/css text/javascript application/javascript application/x-javascript application/json;
+        sub_filter_once off;
+        proxy_intercept_errors on;
+        error_page 404 = @redirect_to_v2_index;
+        proxy_pass {{ $app }};
       }
 
-      location = {{ $apiBasePath }}/ {
-        return 301 {{ $apiBasePath }}/gui/$is_args$args;
+      # Explicit GUI paths never consult the preference cookie.
+      location = {{ $publicPrefix }}/gui {
+        return 302 {{ $publicPrefix }}/gui/$is_args$args;
       }
 
-      location = {{ $apiBasePath }}/gui {
-        return 301 {{ $apiBasePath }}/gui/$is_args$args;
+      location = {{ $publicPrefix }}/gui/v2 {
+        return 302 {{ $publicPrefix }}/$is_args$args;
+      }
+
+      location {{ $publicPrefix }}/gui/v2/ {
+        rewrite ^{{ $publicPrefix }}/gui/v2/(.*)$ {{ $publicPrefix }}/$1 permanent;
+      }
+
+      # Former alias of the classic GUI.
+      location = {{ $publicPrefix }}/gui/v1 {
+        return 302 {{ $publicPrefix }}/gui/$is_args$args;
+      }
+
+      location ^~ {{ $publicPrefix }}/gui/v1/ {
+        rewrite ^{{ $publicPrefix }}/gui/v1/(.*)$ {{ $publicPrefix }}/gui/$1 permanent;
+      }
+
+      # env.js is generated at runtime and intentionally keeps the backend
+      # appBase. Do not apply the public GUI base substitution to it, or the
+      # classic GUI would call the APIs below the public GUI path.
+      location = {{ $publicPrefix }}/gui/env.js {
+        rewrite ^ {{ $backendPrefix }}/gui/env.js break;
+        proxy_pass {{ $app }};
+      }
+
+      location = {{ $publicPrefix }}/gui/artifacts.js {
+        rewrite ^ {{ $backendPrefix }}/gui/artifacts.js break;
+        proxy_pass {{ $app }};
+      }
+
+      location ^~ {{ $publicPrefix }}/gui/ {
+        rewrite ^{{ $publicPrefix }}/gui/(.*)$ {{ $backendPrefix }}/gui/$1 break;
+        proxy_set_header Accept-Encoding "";
+        sub_filter '{{ $backendPrefix }}/gui' '{{ $publicPrefix }}/gui';
+        sub_filter_types text/css text/javascript application/javascript application/x-javascript application/json;
+        sub_filter_once off;
+        proxy_redirect ~^(?:https?://[^/]+)?{{ $backendPrefix }}/gui/(.*)$ {{ $publicPrefix }}/gui/$1;
+        proxy_intercept_errors on;
+        error_page 404 = @redirect_to_v1_index;
+        proxy_pass {{ $app }};
+      }
+
+      location @redirect_to_v1_index {
+        rewrite ^ {{ $backendPrefix }}/gui/index.html break;
+        proxy_set_header Accept-Encoding "";
+        sub_filter '{{ $backendPrefix }}/gui' '{{ $publicPrefix }}/gui';
+        sub_filter_types text/css text/javascript application/javascript application/x-javascript application/json;
+        sub_filter_once off;
+        proxy_pass {{ $app }};
+      }
+
+      # One reserved subtree owns every backend URL. The more specific API
+      # regex locations below still win for uploads and downloads.
+      location = {{ $backendPath }} {
+        proxy_pass {{ $app }};
+      }
+
+      location {{ $backendPrefix }}/ {
+        proxy_pass {{ $app }};
+      }
+
+      # Everything else below the public path belongs to the new GUI. The
+      # rewrite reaches its backend mount without re-running location matching.
+      location {{ $publicPrefix }}/ {
+        rewrite ^{{ $publicPrefix }}/(.*)$ {{ $backendPrefix }}/gui/v2/$1 break;
+        proxy_set_header Accept-Encoding "";
+        sub_filter '{{ $backendPrefix }}/gui/v2' '{{ $publicPrefix }}';
+        sub_filter_types text/css text/javascript application/javascript application/x-javascript application/json;
+        sub_filter_once off;
+        proxy_redirect ~^(?:https?://[^/]+)?{{ $backendPrefix }}/gui/v2/(.*)$ {{ $publicPrefix }}/$1;
+        proxy_intercept_errors on;
+        error_page 404 = @redirect_to_v2_index;
+        proxy_pass {{ $app }};
+      }
+
+      location @redirect_to_v2_index {
+        rewrite ^ {{ $backendPrefix }}/gui/v2/index.html break;
+        proxy_set_header Accept-Encoding "";
+        sub_filter '{{ $backendPrefix }}/gui/v2' '{{ $publicPrefix }}';
+        sub_filter_types text/css text/javascript application/javascript application/x-javascript application/json;
+        sub_filter_once off;
+        proxy_pass {{ $app }};
+      }
+
+      location = {{ $publicPrefix }}/docs {
+        return 302 {{ $backendPrefix }}/docs/;
+      }
+
+      location {{ $publicPrefix }}/docs/ {
+        rewrite ^{{ $publicPrefix }}/docs/(.*)$ {{ $backendPrefix }}/docs/$1 redirect;
+      }
+
+      {{- if $legacyPath }}
+      {{- $pick := dict "default" $guiDefault }}
+
+      # Former {{ $legacyPath }} URLs. Old GUI links are redirected to the GUI
+      # chosen by the preference cookie, falling back to gui.default. Old
+      # API/service URLs are rewritten internally: `last` starts a new location
+      # search and keeps the original method, request body and headers.
+      location ~ ^{{ $legacyPath }}/gui/search/entries/?$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/search/entries$is_args$args" $publicPrefix)
+              "v2" (printf "%s/apps/entries$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=entries$gui_selector_args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/search/(?<app_name>[^/]+)/entry/id/(?<entry_id>[^/?]+)(?<rest_path>.*)$ {
+        set $v2_entry_suffix '';
+        if ($rest_path = /data) { set $v2_entry_suffix /archive; }
+        if ($rest_path ~ ^/data/(.*)$) { set $v2_entry_suffix /archive/$1; }
+        if ($rest_path = /logs) { set $v2_entry_suffix /logs; }
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/search/$app_name/entry/id/$entry_id$rest_path$is_args$args" $publicPrefix)
+              "v2" (printf "%s/apps/$app_name/$entry_id$v2_entry_suffix$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=entry&entryId=$entry_id&appId=$app_name$gui_selector_args$gui_selector_entry_fragment" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/search/(?<app_name>[^/?]+)/?$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/search/$app_name$is_args$args" $publicPrefix)
+              "v2" (printf "%s/apps/$app_name$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=app&appId=$app_name$gui_selector_args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/search/?$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/search$is_args$args" $publicPrefix)
+              "v2" (printf "%s/apps/entries$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=entries$gui_selector_args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/entry/id/(?<entry_id>[^/?]+)(?<rest_path>.*)$ {
+        set $v2_entry_suffix '';
+        if ($rest_path = /data) { set $v2_entry_suffix /archive; }
+        if ($rest_path ~ ^/data/(.*)$) { set $v2_entry_suffix /archive/$1; }
+        if ($rest_path = /logs) { set $v2_entry_suffix /logs; }
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/entry/id/$entry_id$rest_path$is_args$args" $publicPrefix)
+              "v2" (printf "%s/apps/entries/$entry_id$v2_entry_suffix$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=entry&entryId=$entry_id$gui_selector_args$gui_selector_entry_fragment" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/user/uploads/?$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/user/uploads$is_args$args" $publicPrefix)
+              "v2" (printf "%s/projects$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=projects$gui_selector_args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/(?:user/uploads/upload/id|upload/id|user/search/upload/id)/(?<project_id>[^/]+)/files/?$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/user/uploads/upload/id/$project_id/files$is_args$args" $publicPrefix)
+              "v2" (printf "%s/projects/$project_id/files$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=project-files&projectId=$project_id$gui_selector_args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/(?:user/uploads/upload/id|upload/id|user/search/upload/id)/(?<project_id>[^/]+)/files/(?<file_path>.+)$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/user/uploads/upload/id/$project_id/files/$file_path$is_args$args" $publicPrefix)
+              "v2" (printf "%s/projects/$project_id/files/$file_path$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=project-files&projectId=$project_id$gui_selector_args$gui_selector_file_fragment" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/(?:user/uploads/upload/id|upload/id|user/search/upload/id)/(?<project_id>[^/]+)/entry/id/(?<entry_id>[^/?]+)(?<rest_path>.*)$ {
+        set $v2_entry_suffix '';
+        if ($rest_path = /data) { set $v2_entry_suffix /archive; }
+        if ($rest_path ~ ^/data/(.*)$) { set $v2_entry_suffix /archive/$1; }
+        if ($rest_path = /logs) { set $v2_entry_suffix /logs; }
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/user/uploads/upload/id/$project_id/entry/id/$entry_id$rest_path$is_args$args" $publicPrefix)
+              "v2" (printf "%s/projects/$project_id/entries/$entry_id$v2_entry_suffix$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=project-entry&projectId=$project_id&entryId=$entry_id$gui_selector_args$gui_selector_entry_fragment" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/(?:user/uploads/upload/id|upload/id|user/search/upload/id)/(?<project_id>[^/?]+)/?$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/user/uploads/upload/id/$project_id$is_args$args" $publicPrefix)
+              "v2" (printf "%s/projects/$project_id$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=project&projectId=$project_id$gui_selector_args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/(?:user/settings|settings)/?$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/user/settings$is_args$args" $publicPrefix)
+              "v2" (printf "%s/settings$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui$is_args$args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/(?:user/profile|profile)/?$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/user/profile$is_args$args" $publicPrefix)
+              "v2" (printf "%s/settings/profile$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui$is_args$args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/(?:user/groups|groups)/?$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/user/groups$is_args$args" $publicPrefix)
+              "v2" (printf "%s/groups$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui$is_args$args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/(?<dataset_route_prefix>dataset|user/datasets/dataset|user/search/dataset)/id/(?<dataset_id>[^/?]+)/entry/id/(?<entry_id>[^/?]+)(?<rest_path>.*)$ {
+        set $v2_entry_suffix '';
+        if ($rest_path = /data) { set $v2_entry_suffix /archive; }
+        if ($rest_path ~ ^/data/(.*)$) { set $v2_entry_suffix /archive/$1; }
+        if ($rest_path = /logs) { set $v2_entry_suffix /logs; }
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/$dataset_route_prefix/id/$dataset_id/entry/id/$entry_id$rest_path$is_args$args" $publicPrefix)
+              "v2" (printf "%s/datasets/$dataset_id/$entry_id$v2_entry_suffix$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=dataset-entry&datasetId=$dataset_id&entryId=$entry_id$gui_selector_args$gui_selector_entry_fragment" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/(?<dataset_route_prefix>dataset|user/datasets/dataset|user/search/dataset)/id/(?<dataset_id>[^/?]+)/?$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/$dataset_route_prefix/id/$dataset_id$is_args$args" $publicPrefix)
+              "v2" (printf "%s/datasets/$dataset_id$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=dataset&datasetId=$dataset_id$gui_selector_args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/(?<dataset_doi_prefix>dataset|user/datasets/dataset|user/search/dataset)/doi/(?<doi>[^?]+)$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/$dataset_doi_prefix/doi/$doi$is_args$args" $publicPrefix)
+              "v2" (printf "%s/datasets/doi/$doi$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=dataset-doi&doi=$doi$gui_selector_args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/(?:dashboard/id|dashboards)/(?<dashboard_id>[^/?]+) {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/dashboard/id/$dashboard_id$is_args$args" $publicPrefix)
+              "v2" (printf "%s/dashboard/$dashboard_id$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=dashboard&dashboardId=$dashboard_id$gui_selector_args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/analyze/north/?$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/analyze/north$is_args$args" $publicPrefix)
+              "v2" (printf "%s/north$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=north$gui_selector_args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/analyze/apis/?$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/analyze/apis$is_args$args" $publicPrefix)
+              "v2" (printf "%s/apis$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui?destination=apis$gui_selector_args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/v1(?:/(?<v1_path>.*))?$ {
+        return 302 {{ $publicPrefix }}/gui/$v1_path$is_args$args;
+      }
+
+      location ~ ^{{ $legacyPath }}/gui/v2(?:/(?<v2_path>.*))?$ {
+        return 302 {{ $publicPrefix }}/$v2_path$is_args$args;
+      }
+
+      # Other old GUI routes keep their path for the classic GUI. Unknown new
+      # GUI routes fall back to its home instead of an arbitrary redirect.
+      location ~ ^{{ $legacyPath }}/gui(?:/(?<legacy_gui_path>.*))?$ {
+        {{- include "nomad.proxy.pickGui" (merge (dict
+              "v1" (printf "%s/gui/$legacy_gui_path$is_args$args" $publicPrefix)
+              "v2" (printf "%s/$is_args$args" $publicPrefix)
+              "select" (printf "%s/select-gui$is_args$args" $publicPrefix)) $pick) | nindent 8 }}
+      }
+
+      # This must be an anchored regex, and it must appear before the generic
+      # /api/v1 regex locations below. A prefix location is not enough: those
+      # regexes also match the old path and would bypass this rewrite for
+      # uploads and downloads.
+      location ~ ^{{ $legacyPath }}/(?:api|north|optimade|dcat|h5grove|dashboards|docs|metrics|alive|temporal)(?:/|$) {
+        rewrite ^{{ $legacyPath }}/(.*)$ {{ $backendPrefix }}/$1 last;
+      }
+
+      # All remaining routes under the old base path belonged to the backend
+      # (including arbitrary API entry point prefixes).
+      location = {{ $legacyPath }} {
+        return 302 {{ $publicPrefix }}/$is_args$args;
+      }
+
+      location = {{ $legacyPath }}/ {
+        return 302 {{ $publicPrefix }}/$is_args$args;
+      }
+
+      location {{ $legacyPath }}/ {
+        rewrite ^{{ $legacyPath }}/(.*)$ {{ $backendPrefix }}/$1 last;
+      }
+      {{- end }}
+
+      {{- else }}
+      # Single base path: the backend and both GUIs share {{ $backendPath }}.
+      location = {{ $backendPath }} {
+        return 301 {{ $backendPrefix }}/gui/$is_args$args;
+      }
+
+      {{- if ne $backendPath "/" }}
+
+      location = {{ $backendPrefix }}/ {
+        return 301 {{ $backendPrefix }}/gui/$is_args$args;
+      }
+      {{- end }}
+
+      location = {{ $backendPrefix }}/gui {
+        return 301 {{ $backendPrefix }}/gui/$is_args$args;
       }
 
       {{- if ne $guiDefault "v1" }}
@@ -83,68 +465,70 @@ data:
       # entry point honours the nomad_gui_pref cookie set by the new GUI's
       # selector and settings pages, and falls back to gui.default. Deep links
       # below /gui/ keep serving the classic GUI, so existing URLs still work.
-      location = {{ $apiBasePath }}/gui/ {
+      location = {{ $backendPrefix }}/gui/ {
         if ($cookie_nomad_gui_pref = "v1") {
-          return 302 {{ $apiBasePath }}/gui/v1/$is_args$args;
+          return 302 {{ $backendPrefix }}/gui/v1/$is_args$args;
         }
         if ($cookie_nomad_gui_pref = "v2") {
-          return 302 {{ $apiBasePath }}/gui/v2/$is_args$args;
+          return 302 {{ $backendPrefix }}/gui/v2/$is_args$args;
         }
         {{- if eq $guiDefault "select" }}
-        return 302 {{ $apiBasePath }}/gui/v2/select-gui$is_args$args;
+        return 302 {{ $backendPrefix }}/gui/v2/select-gui$is_args$args;
         {{- else }}
-        return 302 {{ $apiBasePath }}/gui/v2/$is_args$args;
+        return 302 {{ $backendPrefix }}/gui/v2/$is_args$args;
         {{- end }}
       }
 
-      location = {{ $apiBasePath }}/gui/v1 {
-        return 302 {{ $apiBasePath }}/gui/v1/$is_args$args;
+      location = {{ $backendPrefix }}/gui/v1 {
+        return 302 {{ $backendPrefix }}/gui/v1/$is_args$args;
       }
 
-      location = {{ $apiBasePath }}/gui/v2 {
-        return 302 {{ $apiBasePath }}/gui/v2/$is_args$args;
+      location = {{ $backendPrefix }}/gui/v2 {
+        return 302 {{ $backendPrefix }}/gui/v2/$is_args$args;
       }
 
       # Stable alias for the classic GUI, which is served from /gui/.
-      location {{ $apiBasePath }}/gui/v1/ {
-        rewrite ^{{ $apiBasePath }}/gui/v1/(.*)$ {{ $apiBasePath }}/gui/$1 break;
+      location {{ $backendPrefix }}/gui/v1/ {
+        rewrite ^{{ $backendPrefix }}/gui/v1/(.*)$ {{ $backendPrefix }}/gui/$1 break;
         proxy_intercept_errors on;
         error_page 404 = @redirect_to_index;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass {{ $app }};
       }
 
-      location {{ $apiBasePath }}/gui/v2/ {
+      location {{ $backendPrefix }}/gui/v2/ {
         proxy_intercept_errors on;
         error_page 404 = @redirect_to_v2_index;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass {{ $app }};
       }
 
       location @redirect_to_v2_index {
-        rewrite ^ {{ $apiBasePath }}/gui/v2/index.html break;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        rewrite ^ {{ $backendPrefix }}/gui/v2/index.html break;
+        proxy_pass {{ $app }};
       }
       {{- end }}
 
-      location {{ $apiBasePath }}/gui/ {
+      location {{ $backendPrefix }}/gui/ {
         proxy_intercept_errors on;
         error_page 404 = @redirect_to_index;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass {{ $app }};
       }
 
       location @redirect_to_index {
-        rewrite ^ {{ $apiBasePath }}/gui/index.html break;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        rewrite ^ {{ $backendPrefix }}/gui/index.html break;
+        proxy_pass {{ $app }};
       }
+      {{- end }}
 
-      location {{ $apiBasePath }}/docs/ {
+      location {{ $backendPrefix }}/docs/ {
+        # Redirect (302) on 404; serving another page under the requested path
+        # would break its relative asset links.
         proxy_intercept_errors on;
-        error_page 404 = @redirect_to_index_docs;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        error_page 404 = @docs404redirect;
+        proxy_pass {{ $app }};
       }
 
-      location @redirect_to_index_docs {
-        rewrite ^ {{ $apiBasePath }}/docs/index.html break;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+      location @docs404redirect {
+        return 302 {{ $backendPrefix }}/docs/404.html;
       }
 
       location ~ \/gui\/(service-worker\.js|meta\.json)$ {
@@ -153,28 +537,37 @@ data:
         if_modified_since off;
         expires off;
         etag off;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass {{ $app }};
       }
 
-      location ~ /api/v1/uploads(/?$|.*/raw|.*/(bundle|import)$) {
+      location ~ /api/v1/(.*/download|uploads/[^/]+/export/?$) {
+        proxy_buffering off;
+        proxy_pass {{ $app }};
+      }
+
+      # Legacy bundle endpoints support both imports and exports.
+      location ~ /api/v1/uploads/[^/]+/bundle/?$ {
         client_max_body_size 35g;
         proxy_request_buffering off;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_buffering off;
+        proxy_pass {{ $app }};
       }
 
-      location ~ /api/v1/.*/download {
-        proxy_buffering off;
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+      # Stream uploads and imports without buffering the request.
+      location ~ /api/v1/uploads(/?$|/import/?$|/[^/]+/raw(/|$)) {
+        client_max_body_size 35g;
+        proxy_request_buffering off;
+        proxy_pass {{ $app }};
       }
 
       location ~ /api/v1/entries/edit {
         proxy_buffering off;
         proxy_read_timeout {{ .Values.nomad.proxy.editTimeout }};
-        proxy_pass http://{{ include "nomad.fullname" . }}-app:8000;
+        proxy_pass {{ $app }};
       }
 
       {{- if $config.temporal.ui_enabled }}
-      location {{ $apiBasePath }}/temporal/ {
+      location {{ $backendPrefix }}/temporal/ {
         proxy_pass http://{{ include "nomad.fullname" . }}-temporal-web:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -205,7 +598,7 @@ data:
       }
 
       # Handle static assets specifically (CSS, JS, images)
-      location {{ $apiBasePath }}/temporal/_app/immutable/ {
+      location {{ $backendPrefix }}/temporal/_app/immutable/ {
           proxy_pass http://{{ include "nomad.fullname" . }}-temporal-web:8080;
 
           proxy_set_header Host $host;
@@ -230,7 +623,11 @@ data:
       {{- end }}
 
       {{- if $config.north.enabled }}
-      location {{ $apiBasePath }}/north/ {
+      location = {{ $backendPrefix }}/north {
+          return 302 {{ $backendPrefix }}/north/$is_args$args;
+      }
+
+      location {{ $backendPrefix }}/north/ {
           client_max_body_size 500m;
           proxy_pass http://{{ include "jupyterhub.fullname" . }}-proxy-public;
 
