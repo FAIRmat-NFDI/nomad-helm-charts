@@ -142,7 +142,8 @@ The proxy uses the same URL layout as [nomad-distro-template](https://github.com
 |---|---|
 | `/` | New GUI (v2), including its `/select-gui` page |
 | `/gui/` | Classic GUI (v1) |
-| `/backend/` | NOMAD API and other backend services, e.g. `/backend/api/v1`, `/backend/north`, `/backend/docs`, `/backend/alive` |
+| `/backend/` | NOMAD API and other backend services, e.g. `/backend/api/v1`, `/backend/north`, `/backend/alive` |
+| `/docs`, `/backend/docs` | Redirect to the documentation at `nomad.proxy.docsUrl` (https://docs.nomad-lab.eu); set it to `""` to serve the docs built into older images |
 | `/nomad-oasis/` | Former base path: GUI links are redirected, API/service URLs are rewritten to `/backend/` |
 
 ```yaml
@@ -155,6 +156,7 @@ nomad:
   proxy:
     publicPath: /               # GUI
     legacyPath: /nomad-oasis    # "" to disable the compatibility routes
+    docsUrl: https://docs.nomad-lab.eu  # "" to serve the docs from the image
 jupyterhub:
   hub:
     baseUrl: /backend/north     # <api_base_path>/north

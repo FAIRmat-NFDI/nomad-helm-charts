@@ -7,6 +7,7 @@
 {{- $publicPrefix := include "nomad.proxy.publicPrefix" . -}}
 {{- $split := ne $backendPath $publicPath -}}
 {{- $guiDefault := $config.gui.default | default "select" -}}
+{{- $docsUrl := trimSuffix "/" (.Values.nomad.proxy.docsUrl | default "") -}}
 {{- if not (has $guiDefault (list "v1" "v2" "select")) }}
 {{- fail "nomad.config.gui.default must be one of: v1, v2, select" }}
 {{- end }}
@@ -239,6 +240,8 @@ data:
         proxy_pass {{ $app }};
       }
 
+      {{- if not $docsUrl }}
+
       location = {{ $publicPrefix }}/docs {
         return 302 {{ $backendPrefix }}/docs/;
       }
@@ -246,6 +249,7 @@ data:
       location {{ $publicPrefix }}/docs/ {
         rewrite ^{{ $publicPrefix }}/docs/(.*)$ {{ $backendPrefix }}/docs/$1 redirect;
       }
+      {{- end }}
 
       {{- if $legacyPath }}
       {{- $pick := dict "default" $guiDefault }}
@@ -519,6 +523,19 @@ data:
       }
       {{- end }}
 
+      {{- if $docsUrl }}
+      # The documentation is hosted separately. Keep page paths and query
+      # strings while moving requests to the docs host.
+      {{- range $prefix := (list $backendPrefix $publicPrefix | uniq) }}
+      location = {{ $prefix }}/docs {
+        return 301 {{ $docsUrl }}/$is_args$args;
+      }
+
+      location {{ $prefix }}/docs/ {
+        rewrite ^{{ $prefix }}/docs/(.*)$ {{ $docsUrl }}/$1 permanent;
+      }
+      {{- end }}
+      {{- else }}
       location {{ $backendPrefix }}/docs/ {
         # Redirect (302) on 404; serving another page under the requested path
         # would break its relative asset links.
@@ -530,6 +547,7 @@ data:
       location @docs404redirect {
         return 302 {{ $backendPrefix }}/docs/404.html;
       }
+      {{- end }}
 
       location ~ \/gui\/(service-worker\.js|meta\.json)$ {
         add_header Last-Modified $date_gmt;

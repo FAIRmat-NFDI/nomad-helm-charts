@@ -301,6 +301,11 @@ nomad:
     # GUI links are redirected and old API/service URLs are rewritten to the
     # backend path. Set to "" to disable.
     legacyPath: /nomad-oasis
+    # Redirect <publicPath>/docs and <api_base_path>/docs to this external
+    # documentation, keeping the page path. NOMAD 2 images do not ship the
+    # documentation (the app answers /docs with an error); its GUI links to
+    # the same site. Set to "" to serve the docs built into older images.
+    docsUrl: https://docs.nomad-lab.eu
     replicaCount: 1
     timeout: 60
     editTimeout: 60
