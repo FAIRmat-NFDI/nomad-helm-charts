@@ -103,9 +103,14 @@ helm dependency update .
 echo ""
 echo "Step 6: Creating namespace and secrets..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-kubectl create secret generic nomad-hub-service-api-token \
-  --from-literal=token=secret-token \
-  -n "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+# The hub service token grants admin on the JupyterHub API, which is reachable
+# through the ingress. Generate a random one on first install and keep it on
+# re-runs. The hub and NOMAD both read it from this secret.
+if ! kubectl get secret nomad-hub-service-api-token -n "$NAMESPACE" &>/dev/null; then
+  kubectl create secret generic nomad-hub-service-api-token \
+    --from-literal=token="$(openssl rand -hex 32)" \
+    -n "$NAMESPACE"
+fi
 
 # Step 7: Install the chart
 echo ""
@@ -132,7 +137,7 @@ kubectl get pods -n "$NAMESPACE"
 echo ""
 echo "To access NOMAD Oasis:"
 echo ""
-echo "  Open in browser: http://localhost/nomad-oasis/gui/"
+echo "  Open in browser: http://localhost/"
 echo ""
 echo "To check status:"
 echo "  ./helpers/check-status.sh"

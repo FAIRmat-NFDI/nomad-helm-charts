@@ -48,7 +48,7 @@ nomad:
   config:
     services:
       api_host: your-domain.com
-      api_base_path: /nomad-oasis
+      api_base_path: /backend
   ingress:
     enabled: true
 ```
@@ -74,6 +74,8 @@ Clone this repository and install directly from the charts directory.
 ```bash
 ./helpers/minikube-setup.sh
 ```
+
+Both scripts serve the demo over HTTPS with a self-signed certificate (cert-manager), so accept the browser warning once. Pass `--no-tls` for plain HTTP; `--local-keycloak` always uses HTTP. Over HTTP, the new GUI can only sign in with `nomad-gui` newer than 2.0.0rc2, which skips PKCE when `services.https` is off; older versions need WebCrypto, which browsers only allow on HTTPS or `localhost`, so use the classic GUI (`/gui/`) there. Copy-to-clipboard buttons in the new GUI also need HTTPS.
 
 ### Using Kind
 
@@ -175,7 +177,7 @@ The `default` chart includes these subcharts (all disabled by default, enable as
 - **MongoDB** 14.0.4 -- Document database
 - **Temporal** 0.72.0 -- Workflow orchestration
 - **PostgreSQL** 12.1.6 -- Temporal persistence backend
-- **JupyterHub** 3.2.1 -- NORTH interactive computing
+- **JupyterHub** 4.4.2 -- NORTH interactive computing
 
 ## Helper Scripts
 

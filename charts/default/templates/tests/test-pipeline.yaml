@@ -2,7 +2,7 @@
 {{- $config := .Values.nomad.config -}}
 {{- $tests := .Values.nomad.tests -}}
 {{- $image := $tests.image | default .Values.nomad.image -}}
-{{- $apiBase := printf "http://%s-proxy:%v%s/api/v1" (include "nomad.fullname" .) .Values.nomad.proxy.service.port $config.services.api_base_path -}}
+{{- $apiBase := printf "http://%s-proxy:%v%s/api/v1" (include "nomad.fullname" .) .Values.nomad.proxy.service.port (include "nomad.proxy.backendPrefix" .) -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:

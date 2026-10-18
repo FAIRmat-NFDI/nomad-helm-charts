@@ -64,7 +64,7 @@ spec:
           {{- with .Values.nomad.app.startupProbe }}
           startupProbe:
             httpGet:
-              path: "{{ $config.services.api_base_path }}/gui/index.html"
+              path: "{{ include "nomad.proxy.backendPrefix" $ }}/gui/index.html"
               port: http
             initialDelaySeconds: {{ .initialDelaySeconds | default 15 }}
             periodSeconds: {{ .periodSeconds | default 10 }}
@@ -74,7 +74,7 @@ spec:
           {{- end }}
           livenessProbe:
             httpGet:
-              path: "{{ $config.services.api_base_path }}/gui/index.html"
+              path: "{{ include "nomad.proxy.backendPrefix" $ }}/gui/index.html"
               port: http
             initialDelaySeconds: {{ .Values.nomad.app.livenessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.nomad.app.livenessProbe.periodSeconds }}
@@ -83,7 +83,7 @@ spec:
             successThreshold: {{ .Values.nomad.app.livenessProbe.successThreshold | default 1 }}
           readinessProbe:
             httpGet:
-              path: "{{ $config.services.api_base_path }}/gui/index.html"
+              path: "{{ include "nomad.proxy.backendPrefix" $ }}/gui/index.html"
               port: http
             initialDelaySeconds: {{ .Values.nomad.app.readinessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.nomad.app.readinessProbe.periodSeconds }}

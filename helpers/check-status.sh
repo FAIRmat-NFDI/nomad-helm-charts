@@ -89,13 +89,13 @@ echo ""
 echo "[7/7] Verifying Internal Connectivity..."
 if [ -n "$APP_POD" ]; then
     echo "Checking health endpoint from inside the app pod..."
-    HTTP_CODE=$(kubectl exec -n "$NAMESPACE" "$APP_POD" -- curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/nomad-oasis/alive 2>/dev/null || echo "000")
+    HTTP_CODE=$(kubectl exec -n "$NAMESPACE" "$APP_POD" -- curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/backend/alive 2>/dev/null || echo "000")
     if [ "$HTTP_CODE" = "200" ]; then
         echo "Internal Health Check: OK (200)"
     else
         echo "Internal Health Check: HTTP $HTTP_CODE"
         echo "Debugging with verbose curl:"
-        kubectl exec -n "$NAMESPACE" "$APP_POD" -- curl -v http://localhost:8000/nomad-oasis/alive 2>&1 || true
+        kubectl exec -n "$NAMESPACE" "$APP_POD" -- curl -v http://localhost:8000/backend/alive 2>&1 || true
     fi
 else
     echo "Skipping internal check (App pod not found)"

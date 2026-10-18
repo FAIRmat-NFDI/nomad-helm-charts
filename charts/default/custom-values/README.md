@@ -68,7 +68,7 @@ Not translated by Traefik: `denylist-source-range` (use an `IPAllowList`, a Netw
 Follow Traefik's [NGINX to Traefik migration guide](https://doc.traefik.io/traefik/migrate/nginx-to-traefik/); nothing in the chart changes:
 
 1. Install Traefik next to ingress-nginx with the command above (add `--set providers.kubernetesIngressNGINX.publishService.enabled=false` while both run, so they don't fight over the Ingress status).
-2. Verify through Traefik's own IP without touching DNS: `curl --connect-to your-domain.com:443:<traefik-ip>: https://your-domain.com/nomad-oasis/api/v1/info`. Existing TLS secrets are reused; cert-manager keeps working (use a DNS-01 solver, or keep nginx until Traefik is reachable, for HTTP-01 renewals during the overlap).
+2. Verify through Traefik's own IP without touching DNS: `curl --connect-to your-domain.com:443:<traefik-ip>: https://your-domain.com/backend/api/v1/info`. Existing TLS secrets are reused; cert-manager keeps working (use a DNS-01 solver, or keep nginx until Traefik is reachable, for HTTP-01 renewals during the overlap).
 3. Shift traffic: re-point DNS or the external load balancer at Traefik.
 4. Uninstall ingress-nginx, **keeping the `nginx` IngressClass** (`helm.sh/resource-policy: keep`, or re-create it as above), then remove the `publishService` override.
 
@@ -232,7 +232,7 @@ jupyterhub:
   hub:
     config:
       GenericOAuthenticator:
-        oauth_callback_url: https://your-domain.com/nomad-oasis/north/hub/oauth_callback
+        oauth_callback_url: https://your-domain.com/backend/north/hub/oauth_callback
 ```
 
 ACM handles certificate provisioning and renewal automatically — no cert-manager needed.
@@ -308,7 +308,7 @@ The Google Cloud Load Balancer takes a few minutes to provision. Once ready, its
 kubectl get ingress nomad-oasis -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 ```
 
-Browse to `http://<api_host>/nomad-oasis/gui/` (the DNS name / nip.io host you set) to confirm NOMAD Oasis is up. If you used your own domain, create a DNS A-record pointing it at the static IP. Note that the Google Cloud Load Balancer can take 5–10 minutes after creation before it starts serving traffic.
+Browse to `http://<api_host>/` (the DNS name / nip.io host you set) to confirm NOMAD Oasis is up. If you used your own domain, create a DNS A-record pointing it at the static IP. Note that the Google Cloud Load Balancer can take 5–10 minutes after creation before it starts serving traffic.
 
 ### Enabling HTTPS (Google-managed certificate)
 
@@ -316,4 +316,4 @@ TODO
 
 ### Enabling North (JupyterHub)
 
-North is disabled by default. To enable it, set `nomad.config.north.enabled: true` and `jupyterhub.enabled: true`, and set the JupyterHub OAuth callback URL to your external host (`http://<host>/nomad-oasis/north/hub/oauth_callback`, `https://` once TLS is on). The NOMAD proxy routes `/nomad-oasis/north/` internally, so **no extra ingress or second static IP is needed** — everything stays behind the single GCE load balancer.
+North is disabled by default. To enable it, set `nomad.config.north.enabled: true` and `jupyterhub.enabled: true`, and set the JupyterHub OAuth callback URL to your external host (`http://<host>/backend/north/hub/oauth_callback`, `https://` once TLS is on). The NOMAD proxy routes `/backend/north/` internally, so **no extra ingress or second static IP is needed** — everything stays behind the single GCE load balancer.

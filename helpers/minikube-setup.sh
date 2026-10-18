@@ -5,22 +5,41 @@
 # Run from the repository root.
 #
 # Usage:
-#   ./helpers/minikube-setup.sh                    # HTTP (no TLS), central Keycloak
-#   ./helpers/minikube-setup.sh --tls              # HTTPS with self-signed cert-manager certificates
-#   ./helpers/minikube-setup.sh --local-keycloak   # in-cluster Keycloak (admin/admin)
+#   ./helpers/minikube-setup.sh                    # HTTPS with self-signed cert-manager certificates, central Keycloak
+#   ./helpers/minikube-setup.sh --no-tls           # plain HTTP
+#   ./helpers/minikube-setup.sh --local-keycloak   # in-cluster Keycloak (admin/admin), plain HTTP
+#
+# TLS is on by default: browsers only provide WebCrypto and the clipboard API in
+# secure contexts (HTTPS or localhost). Over HTTP, the new GUI can sign in only
+# with nomad-gui newer than 2.0.0rc2 (it skips PKCE when services.https is off);
+# with older versions use the classic GUI at /gui/.
 
 set -euo pipefail
 
 # Parse flags
-USE_TLS=false
+USE_TLS=true
 LOCAL_KEYCLOAK=false
 for arg in "$@"; do
   case "$arg" in
     --tls) USE_TLS=true ;;
+    --no-tls) USE_TLS=false ;;
     --local-keycloak) LOCAL_KEYCLOAK=true ;;
     *) echo "Unknown argument: $arg"; exit 1 ;;
   esac
 done
+
+# The local Keycloak realm (local-keycloak-realm.json) and its ingress are
+# HTTP-only, so keep the whole demo on HTTP when it is used.
+if $LOCAL_KEYCLOAK && $USE_TLS; then
+  echo "Note: --local-keycloak is HTTP-only; disabling TLS. The new GUI signs in over"
+  echo "      HTTP only with nomad-gui newer than 2.0.0rc2; otherwise use the classic"
+  echo "      GUI at /gui/."
+  USE_TLS=false
+fi
+SCHEME=http
+if $USE_TLS; then
+  SCHEME=https
+fi
 
 # Check prerequisites
 for cmd in docker minikube helm kubectl; do
@@ -137,9 +156,14 @@ fi
 echo ""
 echo "Step 6: Creating namespace and secrets..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-kubectl create secret generic nomad-hub-service-api-token \
-  --from-literal=token=secret-token \
-  -n "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+# The hub service token grants admin on the JupyterHub API, which is reachable
+# through the ingress. Generate a random one on first install and keep it on
+# re-runs. The hub and NOMAD both read it from this secret.
+if ! kubectl get secret nomad-hub-service-api-token -n "$NAMESPACE" &>/dev/null; then
+  kubectl create secret generic nomad-hub-service-api-token \
+    --from-literal=token="$(openssl rand -hex 32)" \
+    -n "$NAMESPACE"
+fi
 
 # Step 7: Install the chart
 echo ""
@@ -195,7 +219,10 @@ echo "  2. Start tunnel (in separate terminal):"
 echo "     minikube tunnel"
 echo ""
 echo "  3. Open in browser:"
-echo "     http://$NOMAD_HOSTNAME/nomad-oasis/gui/"
+echo "     $SCHEME://$NOMAD_HOSTNAME/"
+if $USE_TLS; then
+  echo "     (the certificate is self-signed: accept the browser warning once)"
+fi
 echo ""
 
 if [ "$LOCAL_KEYCLOAK" = "true" ]; then

@@ -1,5 +1,5 @@
 {{- $config := .Values.nomad.config -}}
-{{- $path := $config.services.api_base_path -}}
+{{- $path := include "nomad.proxy.publicPath" . -}}
 {{- $apiHost := $config.services.api_host -}}
 {{- $tlsEnabled := or .Values.nomad.ingress.tls .Values.nomad.ingress.certManager.enabled -}}
 

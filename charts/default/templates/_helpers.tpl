@@ -53,6 +53,52 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- .Values.nomad.config.services.api_base_path }}
 {{- end }}
 
+{{/*
+URL layout. The backend path (services.api_base_path) is where NOMAD mounts its
+API, NORTH and the other services. The public path is where the GUI is served;
+when it differs from the backend path, the proxy serves the new GUI at the
+public path, the classic GUI at <public>/gui/ and reserves the backend path for
+the services. Root paths use an empty prefix when composing child routes.
+*/}}
+{{- define "nomad.proxy.backendPath" -}}
+{{- $path := .Values.nomad.config.services.api_base_path -}}
+{{- if eq $path "/" -}}
+/
+{{- else -}}
+{{- trimSuffix "/" $path -}}
+{{- end -}}
+{{- end }}
+
+{{- define "nomad.proxy.publicPath" -}}
+{{- $path := default .Values.nomad.config.services.api_base_path .Values.nomad.proxy.publicPath -}}
+{{- if eq $path "/" -}}
+/
+{{- else -}}
+{{- trimSuffix "/" $path -}}
+{{- end -}}
+{{- end }}
+
+{{- define "nomad.proxy.backendPrefix" -}}
+{{- $path := include "nomad.proxy.backendPath" . -}}
+{{- if ne $path "/" -}}{{- $path -}}{{- end -}}
+{{- end }}
+
+{{- define "nomad.proxy.publicPrefix" -}}
+{{- $path := include "nomad.proxy.publicPath" . -}}
+{{- if ne $path "/" -}}{{- $path -}}{{- end -}}
+{{- end }}
+
+{{/*
+nginx statements that send a legacy GUI link to the GUI chosen by the
+nomad_gui_pref cookie, falling back to nomad.config.gui.default. Takes a dict
+with the v1, v2 and select targets and the default.
+*/}}
+{{- define "nomad.proxy.pickGui" -}}
+if ($cookie_nomad_gui_pref = "v1") { return 302 {{ .v1 }}; }
+if ($cookie_nomad_gui_pref = "v2") { return 302 {{ .v2 }}; }
+return 302 {{ index . .default }};
+{{- end }}
+
 {{- define "nomad.config.https" -}}
 {{- .Values.nomad.config.services.https }}
 {{- end }}
