@@ -349,6 +349,8 @@ nomad:
 
   app:
     replicaCount: 1
+    # Number of gunicorn worker processes per app pod
+    workers: 1
     service:
       type: ClusterIP
       port: 8000
