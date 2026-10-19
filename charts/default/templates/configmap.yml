@@ -88,9 +88,7 @@ data:
     "timeout" $config.elastic.timeout
     "bulk_timeout" $config.elastic.bulk_timeout
     "bulk_size" $config.elastic.bulk_size
-    "entries_per_material_cap" $config.elastic.entries_per_material_cap
     "entries_index" (printf "%s_entries_v1" $dbname)
-    "materials_index" (printf "%s_materials_v1" $dbname)
 }}
 {{- $_ := set $computed "elastic" $elastic }}
 
@@ -152,7 +150,6 @@ data:
 {{- if $config.process }}
 {{- $process := dict
     "reuse_parser" $config.process.reuse_parser
-    "index_materials" $config.process.index_materials
     "rfc3161_skip_published" $config.process.rfc3161_skip_published
 }}
 {{- $_ := set $computed "process" $process }}

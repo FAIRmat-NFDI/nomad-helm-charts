@@ -69,7 +69,6 @@ nomad:
       timeout: 60
       bulk_timeout: 600
       bulk_size: 1000
-      entries_per_material_cap: 1000
 
     logstash:
       enabled: false
@@ -94,7 +93,6 @@ nomad:
 
     process:
       reuse_parser: true
-      index_materials: true
       rfc3161_skip_published: false
 
     reprocess:
@@ -147,7 +145,7 @@ nomad:
 
   image:
     repository: ghcr.io/fairmat-nfdi/nomad-distro-template
-    tag: main
+    tag: v2.0.0
     pullPolicy: IfNotPresent
 
   proxy:
@@ -306,16 +304,6 @@ jupyterhub:
     # single-user demo, so they are disabled here (hub, proxy and singleuser).
     networkPolicy:
       enabled: false
-    extraConfig:
-      # Workaround for NORTH hub images whose form.html uses a `markdown` filter
-      # they do not register: every hub page that renders the spawner options
-      # (spawn-pending, home, token) fails with a 500. Fall back to escaped
-      # plain text until the image registers the filter itself.
-      02-north-markdown-filter.py: |
-        import jinja2.defaults
-        from markupsafe import escape
-
-        jinja2.defaults.DEFAULT_FILTERS.setdefault("markdown", escape)
   singleuser:
     networkPolicy:
       enabled: false
