@@ -624,7 +624,7 @@ jupyterhub:
     # match the jupyterhub chart version in Chart.yaml.
     image:
       name: ghcr.io/fairmat-nfdi/nomad-north-k8s
-      tag: main
+      tag: "2.0.0"
     # Must be <nomad.config.services.api_base_path>/north, where the proxy
     # forwards NORTH requests to the hub.
     baseUrl: /backend/north
