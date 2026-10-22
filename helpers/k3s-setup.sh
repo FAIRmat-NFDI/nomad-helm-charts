@@ -16,9 +16,9 @@
 #   ./helpers/k3s-setup.sh --local-keycloak   # in-cluster Keycloak (admin/admin), plain HTTP
 #
 # TLS is on by default: browsers only provide WebCrypto and the clipboard API in
-# secure contexts (HTTPS or localhost). Over HTTP, the new GUI can sign in only
-# with nomad-gui newer than 2.0.0rc2 (it skips PKCE when services.https is off);
-# with older versions use the classic GUI at /gui/.
+# secure contexts (HTTPS or localhost). Over HTTP, the new GUI still signs in
+# with nomad-gui 2.0.0 or newer (it skips PKCE when services.https is off), but
+# its copy-to-clipboard buttons do not work.
 #
 # Override the hostname (e.g. a real domain) with:
 #   NOMAD_HOSTNAME=demo.example.com ./helpers/k3s-setup.sh
@@ -69,9 +69,8 @@ fi
 # The local Keycloak realm (local-keycloak-realm.json) and its ingress are
 # HTTP-only, so keep the whole demo on HTTP when it is used.
 if $LOCAL_KEYCLOAK && $USE_TLS; then
-  echo "Note: --local-keycloak is HTTP-only; disabling TLS. The new GUI signs in over"
-  echo "      HTTP only with nomad-gui newer than 2.0.0rc2; otherwise use the classic"
-  echo "      GUI at /gui/."
+  echo "Note: --local-keycloak is HTTP-only; disabling TLS. Signing in to the new GUI"
+  echo "      over HTTP needs nomad-gui 2.0.0 or newer (the default v2.0.0 image)."
   USE_TLS=false
 fi
 SCHEME=http

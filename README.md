@@ -75,7 +75,7 @@ Clone this repository and install directly from the charts directory.
 ./helpers/minikube-setup.sh
 ```
 
-Both scripts serve the demo over HTTPS with a self-signed certificate (cert-manager), so accept the browser warning once. Pass `--no-tls` for plain HTTP; `--local-keycloak` always uses HTTP. Over HTTP, the new GUI can only sign in with `nomad-gui` newer than 2.0.0rc2, which skips PKCE when `services.https` is off; older versions need WebCrypto, which browsers only allow on HTTPS or `localhost`, so use the classic GUI (`/gui/`) there. Copy-to-clipboard buttons in the new GUI also need HTTPS.
+Both scripts serve the demo over HTTPS with a self-signed certificate (cert-manager), so accept the browser warning once. Pass `--no-tls` for plain HTTP; `--local-keycloak` always uses HTTP. Over HTTP, the new GUI signs in with `nomad-gui` 2.0.0 or newer (included in the default `v2.0.0` image), which skips PKCE when `services.https` is off; its copy-to-clipboard buttons still need HTTPS.
 
 ### Using Kind
 

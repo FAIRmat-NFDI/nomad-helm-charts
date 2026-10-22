@@ -45,7 +45,7 @@ nomad:
   enabled: true
   image:
     repository: ghcr.io/fairmat-nfdi/nomad-distro-template
-    tag: main
+    tag: v2.0.0
 
   proxy:
     replicaCount: 1
@@ -128,7 +128,7 @@ Pin a specific version rather than using `latest`:
 nomad:
   image:
     repository: ghcr.io/fairmat-nfdi/nomad-distro-template
-    tag: "v2.2.0"
+    tag: "v2.0.0"
 ```
 
 > [!TIP]

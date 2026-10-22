@@ -57,7 +57,6 @@ nomad:
       timeout: 60
       bulk_timeout: 600
       bulk_size: 1000
-      entries_per_material_cap: 1000
 
     logstash:
       enabled: false
@@ -95,7 +94,6 @@ nomad:
 
     process:
       reuse_parser: true
-      index_materials: true
       rfc3161_skip_published: false
 
     reprocess:
@@ -184,7 +182,7 @@ nomad:
 
   image:
     repository: ghcr.io/fairmat-nfdi/nomad-distro-template
-    tag: main
+    tag: v2.0.0
     pullPolicy: Always
 
   # initContainer (added to app + worker) that waits for Temporal to be reachable
@@ -626,7 +624,7 @@ jupyterhub:
     # match the jupyterhub chart version in Chart.yaml.
     image:
       name: ghcr.io/fairmat-nfdi/nomad-north-k8s
-      tag: main
+      tag: "2.0.0"
     # Must be <nomad.config.services.api_base_path>/north, where the proxy
     # forwards NORTH requests to the hub.
     baseUrl: /backend/north
@@ -666,23 +664,6 @@ jupyterhub:
         username_key: preferred_username
         userdata_params:
           state: state
-    extraConfig:
-      # The tools are spawned by the NORTH spawner of the hub image.
-      01-nomad-service.py: |
-        import os
-
-        hub_service_api_token = os.getenv('NOMAD_NORTH_HUB_SERVICE_API_TOKEN')
-
-        # configure nomad service
-        c.JupyterHub.services.append(
-            {
-                "name": "nomad-service",
-                "admin": True,
-                "api_token": hub_service_api_token,
-            }
-        )
-
-        c.OAuthenticator.allow_all = True
 
   cull:
     enabled: true
