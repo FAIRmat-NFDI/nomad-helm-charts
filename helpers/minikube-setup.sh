@@ -5,22 +5,40 @@
 # Run from the repository root.
 #
 # Usage:
-#   ./helpers/minikube-setup.sh                    # HTTP (no TLS), central Keycloak
-#   ./helpers/minikube-setup.sh --tls              # HTTPS with self-signed cert-manager certificates
-#   ./helpers/minikube-setup.sh --local-keycloak   # in-cluster Keycloak (admin/admin)
+#   ./helpers/minikube-setup.sh                    # HTTPS with self-signed cert-manager certificates, central Keycloak
+#   ./helpers/minikube-setup.sh --no-tls           # plain HTTP
+#   ./helpers/minikube-setup.sh --local-keycloak   # in-cluster Keycloak (admin/admin), plain HTTP
+#
+# TLS is on by default: browsers only provide WebCrypto and the clipboard API in
+# secure contexts (HTTPS or localhost). Over HTTP, the new GUI still signs in
+# with nomad-gui 2.0.0 or newer (it skips PKCE when services.https is off), but
+# its copy-to-clipboard buttons do not work.
 
 set -euo pipefail
 
 # Parse flags
-USE_TLS=false
+USE_TLS=true
 LOCAL_KEYCLOAK=false
 for arg in "$@"; do
   case "$arg" in
     --tls) USE_TLS=true ;;
+    --no-tls) USE_TLS=false ;;
     --local-keycloak) LOCAL_KEYCLOAK=true ;;
     *) echo "Unknown argument: $arg"; exit 1 ;;
   esac
 done
+
+# The local Keycloak realm (local-keycloak-realm.json) and its ingress are
+# HTTP-only, so keep the whole demo on HTTP when it is used.
+if $LOCAL_KEYCLOAK && $USE_TLS; then
+  echo "Note: --local-keycloak is HTTP-only; disabling TLS. Signing in to the new GUI"
+  echo "      over HTTP needs nomad-gui 2.0.0 or newer (the default v2.0.0 image)."
+  USE_TLS=false
+fi
+SCHEME=http
+if $USE_TLS; then
+  SCHEME=https
+fi
 
 # Check prerequisites
 for cmd in docker minikube helm kubectl; do
@@ -41,11 +59,11 @@ MINIKUBE_DISK="${MINIKUBE_DISK:-40g}"
 MINIKUBE_DRIVER="${MINIKUBE_DRIVER:-docker}"
 RELEASE_NAME="${RELEASE_NAME:-nomad-oasis}"
 NAMESPACE="${NAMESPACE:-nomad-oasis}"
-HOSTNAME="${HOSTNAME:-nomad-oasis.local}"
+NOMAD_HOSTNAME="${NOMAD_HOSTNAME:-nomad-oasis.local}"
 
 echo "=== NOMAD Oasis Minikube Setup ==="
 echo "CPUs: $MINIKUBE_CPUS, Memory: ${MINIKUBE_MEMORY}MB, Disk: $MINIKUBE_DISK"
-echo "Namespace: $NAMESPACE, Hostname: $HOSTNAME"
+echo "Namespace: $NAMESPACE, Hostname: $NOMAD_HOSTNAME"
 if $USE_TLS; then
   echo "TLS: enabled (self-signed via cert-manager)"
 fi
@@ -70,20 +88,42 @@ minikube start \
 # Step 3: Enable required addons
 echo ""
 echo "Step 3: Enabling addons..."
-minikube addons enable ingress
 minikube addons enable storage-provisioner
 
+# Step 3b: Install Traefik ingress controller
+echo ""
+echo "Step 3b: Installing Traefik ingress controller..."
+# Ingress objects in this chart use ingressClassName: nginx with ingress-nginx
+# annotations; Traefik's Kubernetes Ingress NGINX provider (v3.6.2+) claims that
+# class and translates the annotations. The IngressClass must exist for it to
+# bind (a real ingress-nginx install would have created it).
+kubectl apply -f - <<'EOF_IC'
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+spec:
+  controller: k8s.io/ingress-nginx
+EOF_IC
+helm repo add traefik https://traefik.github.io/charts --force-update
+helm repo update
+# readTimeout=0: Traefik v3 defaults the entrypoint read timeout to 60s, which
+# aborts large NOMAD uploads. hostPort: bind 80/443 directly on the node.
+helm upgrade --install traefik traefik/traefik \
+  --namespace traefik --create-namespace \
+  --set providers.kubernetesIngressNGINX.enabled=true \
+  --set ports.web.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.websecure.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.web.hostPort=80 \
+  --set ports.websecure.hostPort=443 \
+  --wait --timeout 5m
+
 # Step 4: Create host directories for nomad data
-# These match the default hostPath volumes in values.yaml (fs.staging_external,
-# fs.public_external, fs.north_home_external). Pre-creating them with UID 1000
-# (the nomad user) avoids a PermissionError on first write, since Kubernetes
-# creates hostPath directories as root and fsGroup does not apply to hostPath.
 echo ""
 echo "Step 4: Creating data directories on minikube node..."
-minikube ssh -- 'sudo mkdir -p /app/.volumes/fs/{staging,public,north/users} /nomad'
+minikube ssh -- 'sudo mkdir -p /app/.volumes/fs/{staging,public,tmp,north/users}'
 minikube ssh -- 'sudo chown -R 1000:1000 /app/.volumes/fs'
 minikube ssh -- 'sudo chmod -R 755 /app/.volumes/fs'
-minikube ssh -- 'sudo chmod -R 777 /nomad'
 
 # Step 5: Update Helm dependencies
 echo ""
@@ -115,9 +155,14 @@ fi
 echo ""
 echo "Step 6: Creating namespace and secrets..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-kubectl create secret generic nomad-hub-service-api-token \
-  --from-literal=token=secret-token \
-  -n "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+# The hub service token grants admin on the JupyterHub API, which is reachable
+# through the ingress. Generate a random one on first install and keep it on
+# re-runs. The hub and NOMAD both read it from this secret.
+if ! kubectl get secret nomad-hub-service-api-token -n "$NAMESPACE" &>/dev/null; then
+  kubectl create secret generic nomad-hub-service-api-token \
+    --from-literal=token="$(openssl rand -hex 32)" \
+    -n "$NAMESPACE"
+fi
 
 # Step 7: Install the chart
 echo ""
@@ -127,21 +172,21 @@ if $USE_TLS; then
   HELM_ARGS+=(-f custom-values/tls.yaml -f custom-values/minikube-selfsigned.yaml)
 fi
 if $LOCAL_KEYCLOAK; then
-  # NOMAD pods need to resolve $HOSTNAME (the Keycloak ingress host) to the
-  # in-cluster nginx ClusterIP, since OIDC discovery happens server-side.
-  NGINX_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+  # NOMAD pods need to resolve $NOMAD_HOSTNAME (the Keycloak ingress host) to the
+  # in-cluster Traefik ClusterIP, since OIDC discovery happens server-side.
+  INGRESS_IP=$(kubectl get svc -n traefik traefik \
     -o jsonpath='{.spec.clusterIP}')
-  if [ -z "$NGINX_IP" ]; then
-    echo "Error: could not resolve ingress-nginx-controller ClusterIP."
+  if [ -z "$INGRESS_IP" ]; then
+    echo "Error: could not resolve the traefik Service ClusterIP."
     exit 1
   fi
-  echo "  Wiring local Keycloak via hostAliases ($HOSTNAME -> $NGINX_IP)"
+  echo "  Wiring local Keycloak via hostAliases ($NOMAD_HOSTNAME -> $INGRESS_IP)"
   HELM_ARGS+=(
     -f custom-values/local-keycloak.yaml
-    --set "nomad.app.hostAliases[0].ip=$NGINX_IP"
-    --set "nomad.app.hostAliases[0].hostnames[0]=$HOSTNAME"
-    --set "nomad.worker.hostAliases[0].ip=$NGINX_IP"
-    --set "nomad.worker.hostAliases[0].hostnames[0]=$HOSTNAME"
+    --set "nomad.app.hostAliases[0].ip=$INGRESS_IP"
+    --set "nomad.app.hostAliases[0].hostnames[0]=$NOMAD_HOSTNAME"
+    --set "nomad.worker.hostAliases[0].ip=$INGRESS_IP"
+    --set "nomad.worker.hostAliases[0].hostnames[0]=$NOMAD_HOSTNAME"
   )
 fi
 helm install "$RELEASE_NAME" . "${HELM_ARGS[@]}" -n "$NAMESPACE" --timeout 15m
@@ -167,13 +212,16 @@ MINIKUBE_IP=$(minikube ip)
 echo "To access NOMAD Oasis:"
 echo ""
 echo "  1. Add to /etc/hosts:"
-echo "     echo '$MINIKUBE_IP $HOSTNAME' | sudo tee -a /etc/hosts"
+echo "     echo '$MINIKUBE_IP $NOMAD_HOSTNAME' | sudo tee -a /etc/hosts"
 echo ""
 echo "  2. Start tunnel (in separate terminal):"
 echo "     minikube tunnel"
 echo ""
 echo "  3. Open in browser:"
-echo "     http://$HOSTNAME/nomad-oasis/gui/"
+echo "     $SCHEME://$NOMAD_HOSTNAME/"
+if $USE_TLS; then
+  echo "     (the certificate is self-signed: accept the browser warning once)"
+fi
 echo ""
 
 if [ "$LOCAL_KEYCLOAK" = "true" ]; then
@@ -183,7 +231,7 @@ if [ "$LOCAL_KEYCLOAK" = "true" ]; then
   echo "Once all pods are ready:"
   echo ""
   echo "  1. Open the Keycloak admin console:"
-  echo "     http://$HOSTNAME/auth/admin  (admin / admin)"
+  echo "     http://$NOMAD_HOSTNAME/auth/admin  (admin / admin)"
   echo ""
   echo "  2. Top-left realm dropdown -> 'Create realm'"
   echo ""

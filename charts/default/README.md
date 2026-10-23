@@ -20,14 +20,14 @@ nomad:
   config:
     services:
       api_host: localhost           # Used by ingress
-      api_base_path: /nomad-oasis   # Used by ingress, nginx, probes
+      api_base_path: /backend       # Backend services; used by ingress, nginx, probes
       api_port: 80
       https: false
     fs:
-      staging_external: /data/nomad/staging   # Used for volume mounts
-      public_external: /data/nomad/public
-      north_home_external: /data/nomad/north/users
-      nomad: /nomad
+      staging_external: /app/.volumes/fs/staging   # Used for volume mounts
+      public_external: /app/.volumes/fs/public
+      tmp_external: /app/.volumes/fs/tmp
+      north_home_external: /app/.volumes/fs/north/users
     mongo:
       db_name: nomad_oasis
       port: 27017
@@ -44,8 +44,8 @@ Kubernetes deployment configuration (replicas, resources, timeouts, secrets).
 nomad:
   enabled: true
   image:
-    repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
-    tag: latest
+    repository: ghcr.io/fairmat-nfdi/nomad-distro-template
+    tag: v2.0.0
 
   proxy:
     replicaCount: 1
@@ -105,7 +105,7 @@ nomad:
   config:
     services:
       api_host: my-lab.org            # Your domain or hostname
-      api_base_path: /nomad-oasis     # URL path prefix
+      api_base_path: /backend         # Backend path prefix (GUI: nomad.proxy.publicPath)
       https: true                     # Enable for production
 ```
 
@@ -127,13 +127,47 @@ Pin a specific version rather than using `latest`:
 ```yaml
 nomad:
   image:
-    repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
-    tag: "v1.2.2"
+    repository: ghcr.io/fairmat-nfdi/nomad-distro-template
+    tag: "v2.0.0"
 ```
 
 > [!TIP]
-> To access the latest features and improvements, we recommend updating the `nomad.image.tag` to the latest stable version. You can find the available tags in the [GitLab Registry](https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-FAIR/-/container_registry).
+> To access the latest features and improvements, we recommend updating the `nomad.image.tag` to the latest stable version. You can find the available tags in the [GitHub Container Registry](https://github.com/fairmat-nfdi/nomad-distro-template/pkgs/container/nomad-distro-template).
 
+### URL Layout and GUI Version (`nomad.proxy`, `nomad.config.gui.default`)
+
+The proxy uses the same URL layout as [nomad-distro-template](https://github.com/FAIRmat-NFDI/nomad-distro-template):
+
+| Path | Serves |
+|---|---|
+| `/` | New GUI (v2), including its `/select-gui` page |
+| `/gui/` | Classic GUI (v1) |
+| `/backend/` | NOMAD API and other backend services, e.g. `/backend/api/v1`, `/backend/north`, `/backend/alive` |
+| `/docs`, `/backend/docs` | Redirect to the documentation at `nomad.proxy.docsUrl` (https://docs.nomad-lab.eu); set it to `""` to serve the docs built into older images |
+| `/nomad-oasis/` | Former base path: GUI links are redirected, API/service URLs are rewritten to `/backend/` |
+
+```yaml
+nomad:
+  config:
+    services:
+      api_base_path: /backend   # backend services
+    gui:
+      default: select           # select (ask users to choose), v2 (new GUI), or v1 (classic GUI)
+  proxy:
+    publicPath: /               # GUI
+    legacyPath: /nomad-oasis    # "" to disable the compatibility routes
+    docsUrl: https://docs.nomad-lab.eu  # "" to serve the docs from the image
+jupyterhub:
+  hub:
+    baseUrl: /backend/north     # <api_base_path>/north
+```
+
+Without a saved preference, `/` follows `gui.default`: by default it redirects to the `/select-gui` page, as in nomad-distro-template; `v2` serves the new GUI directly and `v1` redirects to `/gui/`. A user's choice is remembered in the `nomad_gui_pref` cookie; users can change it on the `/select-gui` page, in the new GUI's settings, or with the "Open new GUI" button in the classic GUI. Old links below `/nomad-oasis/gui/...` are mapped to the matching page of the chosen GUI.
+
+`publicPath` can also be a prefix (e.g. `/staging` with `api_base_path: /staging/backend`). To keep the former layout, where both GUIs and the services share one base path (`/nomad-oasis/gui/`, `/nomad-oasis/gui/v1/`, `/nomad-oasis/api/v1`), set `publicPath` to the same value as `api_base_path`, and point `jupyterhub.hub.baseUrl`, `NOMAD_API_URL` and the OAuth callback URL back to it.
+
+> [!IMPORTANT]
+> `v2` and `select` require an image that includes the [`nomad-gui`](https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-gui) plugin. For images without it, set `gui.default: v1`.
 
 ### Authentication (`nomad.config.keycloak`)
 
@@ -195,10 +229,10 @@ The chart supports configurable persistence: you can switch from `hostPath` to `
 
 | Volume | Mount Path | Used By | Default hostPath |
 |--------|-----------|---------|-----------------|
-| `public` | `/app/.volumes/fs/public` | All components | `/nomad/public` |
-| `staging` | `/app/.volumes/fs/staging` | All components | `/nomad/staging` |
-| `north-home` | `/app/.volumes/fs/north/users` | App only | `/nomad/north/users` |
-| `nomad` | `/nomad` | All components | `/nomad` |
+| `public` | `/app/.volumes/fs/public` | All components | `/app/.volumes/fs/public` |
+| `staging` | `/app/.volumes/fs/staging` | All components | `/app/.volumes/fs/staging` |
+| `tmp` | `/app/.volumes/fs/tmp` | App + worker | `/app/.volumes/fs/tmp` |
+| `north-home` | `/app/.volumes/fs/north/users` | App only | `/app/.volumes/fs/north/users` |
 
 ### Enabling PVC-based persistence
 
@@ -212,7 +246,7 @@ nomad:
     accessMode: ReadWriteMany     # required for multi-node access
 ```
 
-This creates 4 PVCs (one per volume) and all deployments reference them instead of `hostPath`.
+This creates up to 4 PVCs (one per volume) and all deployments reference them instead of `hostPath` (staging/tmp are skipped when `nomad.worker.storage: memory`).
 
 ### Per-volume configuration
 
@@ -236,9 +270,6 @@ nomad:
 
     north-home:
       size: 1Gi
-
-    nomad:
-      size: 10Gi
 ```
 
 **Resolution order:** per-volume value > top-level value > cluster default.
@@ -257,8 +288,6 @@ nomad:
       existingClaim: my-pre-provisioned-staging-pvc
     north-home:
       existingClaim: my-pre-provisioned-north-pvc
-    nomad:
-      existingClaim: my-pre-provisioned-nomad-pvc
 ```
 
 When `existingClaim` is set, the chart references that PVC directly and does not create one.
@@ -326,12 +355,34 @@ This chart includes ready-to-use values files in the [`custom-values/`](custom-v
 # Start minikube with adequate resources
 minikube start --cpus=6 --memory=12288
 
-# Enable ingress
-minikube addons enable ingress
+# Install the Traefik ingress controller with its Ingress-NGINX provider: it claims
+# the 'nginx' IngressClass and translates the chart's nginx annotations.
+# readTimeout=0 keeps large uploads alive (Traefik v3 defaults it to 60s).
+kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+spec:
+  controller: k8s.io/ingress-nginx
+EOF
+helm repo add traefik https://traefik.github.io/charts
+helm upgrade --install traefik traefik/traefik \
+  --namespace traefik --create-namespace \
+  --set providers.kubernetesIngressNGINX.enabled=true \
+  --set ports.web.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.websecure.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.web.hostPort=80 \
+  --set ports.websecure.hostPort=443 \
+  --wait
 
 # Create required directories
-minikube ssh -- 'sudo mkdir -p /data/nomad/{public,staging,north/users} && sudo chmod -R 777 /data/nomad'
-minikube ssh -- 'sudo mkdir -p /nomad && sudo chmod -R 777 /nomad'
+# Paths must match nomad.config.fs.{staging,public,north_home}_external in
+# custom-values/minikube.yaml. Owned by UID 1000 to match the pod runAsUser
+# (fsGroup does not apply to hostPath volumes).
+minikube ssh -- 'sudo mkdir -p /app/.volumes/fs/{staging,public,tmp,north/users}'
+minikube ssh -- 'sudo chown -R 1000:1000 /app/.volumes/fs'
+minikube ssh -- 'sudo chmod -R 755 /app/.volumes/fs'
 
 # Update dependencies and install
 helm dependency update ./charts/default
@@ -345,12 +396,12 @@ helm install nomad-oasis ./charts/default \
 ```bash
 # Via port-forward
 kubectl port-forward svc/nomad-oasis-proxy 8080:80
-# Open http://localhost:8080/nomad-oasis/gui/
+# Open http://localhost:8080/
 
 # Via ingress (add to /etc/hosts)
 echo "$(minikube ip) nomad-oasis.local" | sudo tee -a /etc/hosts
 minikube tunnel
-# Open http://nomad-oasis.local/nomad-oasis/gui/
+# Open http://nomad-oasis.local/
 ```
 
 ### Option B: Kind
@@ -388,27 +439,37 @@ nodes:
   - containerPort: 443
     hostPort: 443
     protocol: TCP
-  extraMounts:
-  - hostPath: /tmp/nomad-data
-    containerPath: /data/nomad
-  - hostPath: /tmp/nomad-app
-    containerPath: /nomad
 EOF
 
-# Create data directories
-mkdir -p /tmp/nomad-data/{public,staging,north/users}
-mkdir -p /tmp/nomad-app
-docker exec nomad-oasis-control-plane mkdir -p /data/nomad/{public,staging,north/users}
-docker exec nomad-oasis-control-plane chmod -R 777 /data/nomad
-docker exec nomad-oasis-control-plane mkdir -p /nomad
-docker exec nomad-oasis-control-plane chmod -R 777 /nomad
+# Create data directories on the kind node.
+# Paths must match nomad.config.fs.{staging,public,north_home}_external in
+# custom-values/kind.yaml. Owned by UID 1000 to match the pod runAsUser
+# (fsGroup does not apply to hostPath volumes).
+docker exec nomad-oasis-control-plane mkdir -p /app/.volumes/fs/{staging,public,tmp,north/users}
+docker exec nomad-oasis-control-plane chown -R 1000:1000 /app/.volumes/fs
+docker exec nomad-oasis-control-plane chmod -R 755 /app/.volumes/fs
 
-# Install nginx ingress controller for Kind
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
-kubectl wait --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=120s
+# Install the Traefik ingress controller with its Ingress-NGINX provider: it claims
+# the 'nginx' IngressClass and translates the chart's nginx annotations.
+# readTimeout=0 keeps large uploads alive (Traefik v3 defaults it to 60s).
+kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+spec:
+  controller: k8s.io/ingress-nginx
+EOF
+helm repo add traefik https://traefik.github.io/charts
+helm upgrade --install traefik traefik/traefik \
+  --namespace traefik --create-namespace \
+  --set providers.kubernetesIngressNGINX.enabled=true \
+  --set ports.web.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.websecure.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.web.hostPort=80 \
+  --set ports.websecure.hostPort=443 \
+  --set service.type=ClusterIP \
+  --wait
 
 # Update dependencies and install
 helm dependency update ./charts/default
@@ -421,20 +482,20 @@ helm install nomad-oasis ./charts/default \
 
 ```bash
 # Open directly (ports 80/443 are mapped to localhost)
-# http://localhost/nomad-oasis/gui/
+# http://localhost/
 ```
 
 ### Test Endpoints
 
 ```bash
 # Alive check
-curl http://localhost:8080/nomad-oasis/alive
+curl http://localhost:8080/backend/alive
 
 # API info
-curl http://localhost:8080/nomad-oasis/api/v1/info
+curl http://localhost:8080/backend/api/v1/info
 
 # GUI
-curl -I http://localhost:8080/nomad-oasis/gui/
+curl -I http://localhost:8080/
 ```
 
 ### Uninstall
@@ -533,21 +594,21 @@ For local development (Minikube or Kind), the chart can deploy Keycloak as a sub
 **Deploy:**
 
 ```bash
-# Automated (recommended) — resolves the nginx ClusterIP automatically
+# Automated (recommended) — resolves the ingress controller ClusterIP automatically
 ./helpers/minikube-setup.sh --local-keycloak
 
 # Manual
-NGINX_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.spec.clusterIP}')
+INGRESS_IP=$(kubectl get svc traefik -n traefik -o jsonpath='{.spec.clusterIP}')
 helm install nomad-oasis ./charts/default \
   -f ./charts/default/custom-values/minikube.yaml \
   -f ./charts/default/custom-values/local-keycloak.yaml \
-  --set "nomad.app.hostAliases[0].ip=$NGINX_IP" \
+  --set "nomad.app.hostAliases[0].ip=$INGRESS_IP" \
   --set "nomad.app.hostAliases[0].hostnames[0]=nomad-oasis.local" \
-  --set "nomad.worker.hostAliases[0].ip=$NGINX_IP" \
+  --set "nomad.worker.hostAliases[0].ip=$INGRESS_IP" \
   --set "nomad.worker.hostAliases[0].hostnames[0]=nomad-oasis.local"
 ```
 
-> The `hostAliases` are required so that the app and worker pods can resolve `nomad-oasis.local` to the nginx ingress ClusterIP, allowing them to reach Keycloak via the same URL the browser uses.
+> The `hostAliases` are required so that the app and worker pods can resolve `nomad-oasis.local` to the ingress controller's ClusterIP, allowing them to reach Keycloak via the same URL the browser uses.
 
 After deployment, complete the one-time Keycloak setup described in the [custom-values README](custom-values/README.md#local-keycloak-development).
 
@@ -585,11 +646,11 @@ If NORTH is enabled, JupyterHub also needs OAuth configuration pointing to the s
 ```yaml
 jupyterhub:
   hub:
-    baseUrl: "/nomad-oasis/north"  # Must match api_base_path + /north
+    baseUrl: "/backend/north"  # Must match api_base_path + /north
     config:
       GenericOAuthenticator:
         client_id: nomad_public
-        oauth_callback_url: http://your-host/nomad-oasis/north/hub/oauth_callback
+        oauth_callback_url: http://your-host/backend/north/hub/oauth_callback
         authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/auth
         token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
         userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
@@ -624,17 +685,17 @@ nomad:
       tools:
         options:
           jupyter:
-            image: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro/jupyter:develop
+            image: ghcr.io/fairmat-nfdi/nomad-distro-template/jupyter:main
 
 jupyterhub:
   enabled: true
   fullnameOverride: "nomad-oasis-jupyterhub"
   hub:
-    baseUrl: "/nomad-oasis/north"
+    baseUrl: "/backend/north"
     config:
       GenericOAuthenticator:
         client_id: nomad_public
-        oauth_callback_url: http://your-host/nomad-oasis/north/hub/oauth_callback
+        oauth_callback_url: http://your-host/backend/north/hub/oauth_callback
         authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/auth
         token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
         userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
@@ -663,7 +724,7 @@ nomad:
       tools:
         options:
           jupyter:
-            image: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro/jupyter:develop
+            image: ghcr.io/fairmat-nfdi/nomad-distro-template/jupyter:main
           my-custom-tool:
             image: my-registry/my-tool:latest
 ```
@@ -676,19 +737,89 @@ NORTH requires a shared filesystem for user home directories:
 nomad:
   config:
     fs:
-      north_home_external: /data/nomad/north/users  # Must be accessible by all nodes
+      north_home_external: /app/.volumes/fs/north/users  # Must be accessible by all nodes
 ```
 
 For Minikube:
 ```bash
-minikube ssh -- 'sudo mkdir -p /data/nomad/north/users && sudo chmod -R 777 /data/nomad/north/users'
+minikube ssh -- 'sudo mkdir -p /app/.volumes/fs/north/users'
+minikube ssh -- 'sudo chown -R 1000:1000 /app/.volumes/fs/north'
+minikube ssh -- 'sudo chmod -R 755 /app/.volumes/fs/north'
 ```
 
 For Kind:
 ```bash
-docker exec nomad-oasis-control-plane mkdir -p /data/nomad/north/users
-docker exec nomad-oasis-control-plane chmod -R 777 /data/nomad/north/users
+docker exec nomad-oasis-control-plane mkdir -p /app/.volumes/fs/north/users
+docker exec nomad-oasis-control-plane chown -R 1000:1000 /app/.volumes/fs/north
+docker exec nomad-oasis-control-plane chmod -R 755 /app/.volumes/fs/north
 ```
+
+## Verifying the Deployment (`helm test`)
+
+Healthy pods only prove the processes started — the readiness/liveness probes check that the API answers HTTP, not that data actually flows through Keycloak, the worker, Temporal, MongoDB, Elasticsearch and the shared filesystem volumes.
+
+The chart ships a `helm test` hook that exercises exactly that path, end to end, using only NOMAD's built-in archive parser so it works on any distribution regardless of which plugins are installed. It is **disabled by default** — enable it per deployment with `nomad.tests.enabled: true`, point `nomad.tests.credentialsSecret` at a Secret with NOMAD credentials, then run:
+
+```bash
+helm test <release-name> --namespace <namespace> --logs
+```
+
+The test runs as a Pod (reusing `nomad.image`, so no extra pull and the same `imagePullSecrets`) that drives the public API **through the proxy** — no ingress, LoadBalancer or cloud-specific setup required. It performs one linear flow and prints a `PASS`/`FAIL` line per step:
+
+| Step | What it proves |
+|------|----------------|
+| `GET /info` | app is up and reachable through the proxy |
+| `POST /auth/token` / `GET /users/me` | Keycloak issues and accepts tokens |
+| `POST /uploads` with a minimal `test.archive.json` | app writes to the shared `staging`/`tmp` volumes |
+| poll `GET /uploads/{id}` until `SUCCESS` | Temporal → worker → MongoDB processing works |
+| `GET /uploads/{id}/entries`, `POST /entries/query` | entry is stored and indexed in Elasticsearch |
+| `GET /uploads/{id}/raw/…`, `GET /entries/{id}/archive` | raw and archive files are readable from the shared volumes |
+| `DELETE /uploads/{id}` and poll for 404 | cleanup across MongoDB, Elasticsearch and the filesystem |
+
+### Configuration (`nomad.tests`)
+
+```yaml
+nomad:
+  tests:
+    enabled: true
+    credentialsSecret: nomad-test-creds   # Secret with key `token` OR keys `username`+`password`
+    timeout: 300                          # seconds to wait for processing (and cleanup)
+```
+
+The Secret can hold **either** a pre-created app token (recommended — a single revocable secret, and it works even where the Keycloak realm disables the password grant) **or** a username/password:
+
+```bash
+# Recommended: an app token created from the NOMAD GUI (user settings)
+kubectl create secret generic nomad-test-creds -n <namespace> --from-literal=token=<app-token>
+
+# Or username + password
+kubectl create secret generic nomad-test-creds -n <namespace> \
+  --from-literal=username=<user> --from-literal=password=<pass>
+```
+
+### Scope
+
+This test deliberately covers only the chart's responsibility: that the services it deploys work together. It does **not** verify anything distribution-specific — whether your custom plugins registered, whether a particular parser runs on your data, or whether your apps/APIs/dashboards are mounted. Those checks depend on the image, not the chart, and belong with the distribution itself: the [`nomad-distro-template`](https://github.com/FAIRmat-NFDI/nomad-distro-template) repository already has a place for plugin unit tests and distribution E2E tests.
+
+### Using `helm test` in CI/CD
+
+`helm test` exits non-zero if any step fails, so it plugs straight into a pipeline as the "is the deployment green?" gate:
+
+```bash
+set -euo pipefail
+
+kubectl -n nomad create secret generic nomad-test-creds \
+  --from-literal=token="$NOMAD_APP_TOKEN" --dry-run=client -o yaml | kubectl apply -f -
+
+helm upgrade --install nomad-oasis ./charts/default \
+  -f my-values.yaml --namespace nomad --create-namespace --wait --timeout 15m \
+  --set nomad.tests.enabled=true \
+  --set nomad.tests.credentialsSecret=nomad-test-creds
+
+helm test nomad-oasis --namespace nomad --logs
+```
+
+The test Pod is left in place after a run (it is recreated on the next `helm test`), so `kubectl -n nomad logs -l app.kubernetes.io/component=test` retrieves the result even after the command returns.
 
 ## Troubleshooting
 
@@ -710,10 +841,10 @@ helm upgrade nomad-oasis ./charts/default -f <values-file>
 Ensure directories exist on the node:
 ```bash
 # Minikube
-minikube ssh -- 'ls -la /data/nomad/'
+minikube ssh -- 'ls -la /app/.volumes/fs/'
 
 # Kind
-docker exec nomad-oasis-control-plane ls -la /data/nomad/
+docker exec nomad-oasis-control-plane ls -la /app/.volumes/fs/
 ```
 
 ### Configuration Validation Warnings

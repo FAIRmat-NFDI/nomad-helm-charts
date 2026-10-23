@@ -54,32 +54,43 @@ nodes:
   - containerPort: 443
     hostPort: 443
     protocol: TCP
-  extraMounts:
-  - hostPath: /tmp/nomad-data
-    containerPath: /data/nomad
-  - hostPath: /tmp/nomad-app
-    containerPath: /nomad
 EOF
 
-# Step 3: Create host directories for nomad data
+# Step 3: Create data directories on the kind node.
 echo ""
 echo "Step 3: Creating data directories..."
-mkdir -p /tmp/nomad-data/{public,staging,north/users}
-mkdir -p /tmp/nomad-app
-docker exec "$CLUSTER_NAME-control-plane" mkdir -p /data/nomad/{public,staging,north/users}
-docker exec "$CLUSTER_NAME-control-plane" chmod -R 777 /data/nomad
-docker exec "$CLUSTER_NAME-control-plane" mkdir -p /nomad
-docker exec "$CLUSTER_NAME-control-plane" chmod -R 777 /nomad
+docker exec "$CLUSTER_NAME-control-plane" mkdir -p /app/.volumes/fs/{staging,public,tmp,north/users}
+docker exec "$CLUSTER_NAME-control-plane" chown -R 1000:1000 /app/.volumes/fs
+docker exec "$CLUSTER_NAME-control-plane" chmod -R 755 /app/.volumes/fs
 
-# Step 4: Install nginx ingress controller for Kind
+# Step 4: Install Traefik ingress controller for Kind
 echo ""
-echo "Step 4: Installing nginx ingress controller..."
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
-echo "Waiting for ingress controller to be ready..."
-kubectl wait --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=120s
+echo "Step 4: Installing Traefik ingress controller..."
+# Ingress objects in this chart use ingressClassName: nginx with ingress-nginx
+# annotations; Traefik's Kubernetes Ingress NGINX provider (v3.6.2+) claims that
+# class and translates the annotations. The IngressClass must exist for it to
+# bind (a real ingress-nginx install would have created it).
+kubectl apply -f - <<'EOF_IC'
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+spec:
+  controller: k8s.io/ingress-nginx
+EOF_IC
+helm repo add traefik https://traefik.github.io/charts --force-update
+helm repo update
+# readTimeout=0: Traefik v3 defaults the entrypoint read timeout to 60s, which
+# aborts large NOMAD uploads. hostPort: bind 80/443 directly on the node.
+helm upgrade --install traefik traefik/traefik \
+  --namespace traefik --create-namespace \
+  --set providers.kubernetesIngressNGINX.enabled=true \
+  --set ports.web.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.websecure.transport.respondingTimeouts.readTimeout=0 \
+  --set ports.web.hostPort=80 \
+  --set ports.websecure.hostPort=443 \
+  --set service.type=ClusterIP \
+  --wait --timeout 5m
 
 # Step 5: Update Helm dependencies
 echo ""
@@ -92,9 +103,14 @@ helm dependency update .
 echo ""
 echo "Step 6: Creating namespace and secrets..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-kubectl create secret generic nomad-hub-service-api-token \
-  --from-literal=token=secret-token \
-  -n "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+# The hub service token grants admin on the JupyterHub API, which is reachable
+# through the ingress. Generate a random one on first install and keep it on
+# re-runs. The hub and NOMAD both read it from this secret.
+if ! kubectl get secret nomad-hub-service-api-token -n "$NAMESPACE" &>/dev/null; then
+  kubectl create secret generic nomad-hub-service-api-token \
+    --from-literal=token="$(openssl rand -hex 32)" \
+    -n "$NAMESPACE"
+fi
 
 # Step 7: Install the chart
 echo ""
@@ -121,7 +137,7 @@ kubectl get pods -n "$NAMESPACE"
 echo ""
 echo "To access NOMAD Oasis:"
 echo ""
-echo "  Open in browser: http://localhost/nomad-oasis/gui/"
+echo "  Open in browser: http://localhost/"
 echo ""
 echo "To check status:"
 echo "  ./helpers/check-status.sh"

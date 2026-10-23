@@ -8,10 +8,11 @@ Helm charts for deploying [NOMAD](https://nomad-lab.eu/) on Kubernetes.
 - [Helm](https://helm.sh/docs/intro/install/) >= 3.x
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - For local production/development, a Kubernetes cluster:
+  - [k3s](https://minikube.sigs.k8s.io/docs/start/)
   - [Minikube](https://minikube.sigs.k8s.io/docs/start/)
   - [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
 - For cloud deployment, a Kubernetes cluster:
-  - [GKE](https://cloud.google.com/kubernetes-engine) [under development]
+  - [GKE](https://cloud.google.com/kubernetes-engine)
   - [EKS](https://aws.amazon.com/eks/) [under development]
 
 ## Repository Structure
@@ -47,7 +48,7 @@ nomad:
   config:
     services:
       api_host: your-domain.com
-      api_base_path: /nomad-oasis
+      api_base_path: /backend
   ingress:
     enabled: true
 ```
@@ -62,11 +63,19 @@ Clone this repository and install directly from the charts directory.
 
 ## Quick Start
 
+### Using k3s
+
+```bash
+./helpers/k3s-setup.sh
+```
+
 ### Using Minikube
 
 ```bash
 ./helpers/minikube-setup.sh
 ```
+
+Both scripts serve the demo over HTTPS with a self-signed certificate (cert-manager), so accept the browser warning once. Pass `--no-tls` for plain HTTP; `--local-keycloak` always uses HTTP. Over HTTP, the new GUI signs in with `nomad-gui` 2.0.0 or newer (included in the default `v2.0.0` image), which skips PKCE when `services.https` is off; its copy-to-clipboard buttons still need HTTPS.
 
 ### Using Kind
 
@@ -121,7 +130,7 @@ Rather than writing a values file from scratch, you can use one of the ready-mad
 | File | Where | Best for |
 | --- | --- | --- |
 | `kubernetes/values.yaml` | [`nomad-distro-template`](https://github.com/FAIRmat-NFDI/nomad-distro-template) | Single-node clusters (Minikube, Kind, k3s). No persistence, uses `hostPath`. Includes JupyterHub (NORTH). Uses the distro-template image. |
-| `custom-values/minikube.yaml` | `charts/default/custom-values/` | Minikube specifically. Reduced resource requests, hostname set to `nomad-oasis.local`, nginx ingress enabled. |
+| `custom-values/minikube.yaml` | `charts/default/custom-values/` | Minikube specifically. Reduced resource requests, hostname set to `nomad-oasis.local`, ingress enabled (served by Traefik). |
 | `custom-values/kind.yaml` | `charts/default/custom-values/` | Kind specifically. Similar to the Minikube file but with `localhost` as hostname and longer health-check timeouts to account for Kind's slower image pull behaviour. |
 | `custom-values/aws.yaml` | `charts/default/custom-values/` | AWS EKS. Enables persistence with EFS (`ReadWriteMany`) for NOMAD volumes and `gp2` EBS for databases. Configures an ALB ingress controller. |
 
@@ -168,7 +177,7 @@ The `default` chart includes these subcharts (all disabled by default, enable as
 - **MongoDB** 14.0.4 -- Document database
 - **Temporal** 0.72.0 -- Workflow orchestration
 - **PostgreSQL** 12.1.6 -- Temporal persistence backend
-- **JupyterHub** 3.2.1 -- NORTH interactive computing
+- **JupyterHub** 4.4.2 -- NORTH interactive computing
 
 ## Helper Scripts
 

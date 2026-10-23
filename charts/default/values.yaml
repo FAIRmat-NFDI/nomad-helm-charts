@@ -30,7 +30,9 @@ nomad:
   config:
     services:
       api_host: localhost
-      api_base_path: /nomad-oasis
+      # Where NOMAD mounts its API and the other backend services (NORTH, docs,
+      # alive, ...). The GUI is served at nomad.proxy.publicPath.
+      api_base_path: /backend
       api_port: 80
       https: false
       upload_limit: 10
@@ -39,11 +41,12 @@ nomad:
     fs:
       staging_external: /app/.volumes/fs/staging
       public_external: /app/.volumes/fs/public
+      tmp_external: /app/.volumes/fs/tmp
       north_home_external: /app/.volumes/fs/north/users
+      actions_external: /app/.volumes/fs/actions
       prefix_size: 1
       archive_version_suffix: []
       working_directory: /app
-      nomad: /nomad
 
     mongo:
       db_name: nomad_oasis
@@ -54,7 +57,6 @@ nomad:
       timeout: 60
       bulk_timeout: 600
       bulk_size: 1000
-      entries_per_material_cap: 1000
 
     logstash:
       enabled: false
@@ -69,11 +71,18 @@ nomad:
       host: ""
       graceful_shutdown_timeout: null
       processing_timeouts: {}
+      prometheus_bind_address:
+        enabled: false
+        host: 0.0.0.0
+        port: 9000
+      internal_worker: {}
+      cpu_worker: {}
+      gpu_worker: {}
 
     meta:
       service: app
       homepage: https://nomad-lab.eu
-      source_url: https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-distro
+      source_url: https://github.com/fairmat-nfdi/nomad-distro-template
       maintainer_email: support@nomad-lab.eu
       footer_links: []
       beta:
@@ -85,7 +94,6 @@ nomad:
 
     process:
       reuse_parser: true
-      index_materials: true
       rfc3161_skip_published: false
 
     reprocess:
@@ -128,17 +136,44 @@ nomad:
 
     north:
       enabled: false
+      # Use the NORTH API of the refactored hub (hub.image)
+      enable_new_hub_api: true
       hub_service_api_token: secret-token
       tools: {}
+
+    dashboards:
+      # Serve dashboard plugin entry points and show the dashboards menu item in the GUI
+      enabled: true
+      # CSP frame-ancestors sources that may embed dashboards in an iframe
+      frame_ancestors:
+        - "'self'"
 
     gui:
       debug: false
       gzip: true
+      # GUI served at nomad.proxy.publicPath to users without a saved
+      # preference (nomad_gui_pref cookie), and the fallback for links below
+      # nomad.proxy.legacyPath:
+      #   select: the new GUI's page for choosing between the GUIs, as in
+      #           nomad-distro-template (requires the nomad-gui plugin)
+      #   v2:     the new GUI (requires the nomad-gui plugin in the image)
+      #   v1:     the classic GUI; use this for images without nomad-gui
+      # The classic GUI stays available at <publicPath>/gui/.
+      default: select
       config: {}
 
     oasis:
       is_oasis: true
       uses_central_user_management: true
+
+    telemetry:
+      tracing:
+        enabled: false
+        service_name: nomad-oasis
+        otlp_endpoint: ""
+        sampler_ratio: 0.1
+      metrics:
+        api_prometheus_enabled: false
 
     # plugins: {}
     # normalize: {}
@@ -146,9 +181,23 @@ nomad:
     # ui: {}
 
   image:
-    repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
-    tag: v1.4.2
+    repository: ghcr.io/fairmat-nfdi/nomad-distro-template
+    tag: v2.0.0
     pullPolicy: Always
+
+  # initContainer (added to app + worker) that waits for Temporal to be reachable
+  # and ensures the configured temporal namespace is registered before NOMAD starts.
+  # Fixes two issues: the worker silently fails to poll if Temporal/its namespace
+  # isn't ready at boot (its liveness probe is only `ls /`), and reliable namespace
+  # registration via the frontend FQDN. Only used when nomad.config.temporal.enabled.
+  temporalInit:
+    enabled: true
+    # Temporal admin-tools image (ships the `temporal` CLI). Keep in step with the
+    # temporal subchart's admintools image tag.
+    image: "temporalio/admin-tools:1.29.1-tctl-1.18.4-cli-1.5.0"
+    pullPolicy: IfNotPresent
+    port: 7233
+    namespaceRetention: "72h"
 
   persistence:
     enabled: false
@@ -173,13 +222,13 @@ nomad:
       accessMode: ""
       existingClaim: ""
 
-    nomad:
+    tmp:
       size: 10Gi
       storageClass: ""
       accessMode: ""
       existingClaim: ""
 
-    tmp:
+    actions:
       size: 10Gi
       storageClass: ""
       accessMode: ""
@@ -240,6 +289,21 @@ nomad:
         value: ""
 
   proxy:
+    # Public path of the GUI. With "/", the new GUI is served at the root, the
+    # classic GUI at /gui/ and nomad.config.services.api_base_path is reserved
+    # for the backend services, as in nomad-distro-template. Leave empty (or
+    # set to api_base_path) for the former layout, where the GUIs and services
+    # share one base path (e.g. /nomad-oasis/gui/).
+    publicPath: /
+    # Former base path kept reachable after moving to the layout above: old
+    # GUI links are redirected and old API/service URLs are rewritten to the
+    # backend path. Set to "" to disable.
+    legacyPath: /nomad-oasis
+    # Redirect <publicPath>/docs and <api_base_path>/docs to this external
+    # documentation, keeping the page path. NOMAD 2 images do not ship the
+    # documentation (the app answers /docs with an error); its GUI links to
+    # the same site. Set to "" to serve the docs built into older images.
+    docsUrl: https://docs.nomad-lab.eu
     replicaCount: 1
     timeout: 60
     editTimeout: 60
@@ -274,15 +338,17 @@ nomad:
     podLabels: {}
     livenessProbe:
       initialDelaySeconds: 90
-      periodSeconds: 10
-      timeoutSeconds: 70
+      periodSeconds: 15
+      timeoutSeconds: 10
     readinessProbe:
       initialDelaySeconds: 90
-      periodSeconds: 3
-      timeoutSeconds: 63
+      periodSeconds: 10
+      timeoutSeconds: 5
 
   app:
     replicaCount: 1
+    # Number of gunicorn worker processes per app pod
+    workers: 1
     service:
       type: ClusterIP
       port: 8000
@@ -305,14 +371,26 @@ nomad:
     hostAliases: []
     podAnnotations: {}
     podLabels: {}
+    # A startupProbe gates liveness/readiness during the (slow) plugin-load + GUI
+    # staging phase, giving up to ~10 min. Once it passes, readiness/liveness take
+    # over immediately (initialDelaySeconds: 0), so the pod is marked Ready within
+    # seconds of actually serving instead of waiting out a fixed delay. Set
+    # startupProbe to null/{} to fall back to plain liveness/readiness.
+    startupProbe:
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 10
+      failureThreshold: 60
     livenessProbe:
-      initialDelaySeconds: 420
+      initialDelaySeconds: 0
       periodSeconds: 15
-      timeoutSeconds: 75
+      timeoutSeconds: 10
+      failureThreshold: 3
     readinessProbe:
-      initialDelaySeconds: 420
-      periodSeconds: 15
-      timeoutSeconds: 75
+      initialDelaySeconds: 0
+      periodSeconds: 10
+      timeoutSeconds: 10
+      failureThreshold: 3
 
   worker:
     replicaCount: 1
@@ -358,18 +436,21 @@ nomad:
     affinity: {}
     podAnnotations: {}
     podLabels: {}
+    # The worker's probe is just `ls /` (it has no HTTP health endpoint), and the
+    # wait-temporal-namespace initContainer already gates startup on Temporal being
+    # ready — so the long 300s initial delay is no longer needed.
     livenessProbe:
       failureThreshold: 3
-      initialDelaySeconds: 300
+      initialDelaySeconds: 30
       periodSeconds: 120
       successThreshold: 1
       timeoutSeconds: 60
     readinessProbe:
       failureThreshold: 3
-      initialDelaySeconds: 300
-      periodSeconds: 120
+      initialDelaySeconds: 30
+      periodSeconds: 10
       successThreshold: 1
-      timeoutSeconds: 60
+      timeoutSeconds: 10
 
   gpuworker:
     replicaCount: 0
@@ -433,35 +514,41 @@ nomad:
       successThreshold: 1
       timeoutSeconds: 1
 
-  adminconsole:
+  # `helm test <release>` end-to-end smoke test. Verifies that the core services
+  # work together, beyond pods merely being "Ready": it logs in (Keycloak),
+  # uploads a minimal archive.json (app -> shared fs volumes), waits for
+  # processing (Temporal -> worker -> MongoDB), checks the entry is indexed and
+  # searchable (Elasticsearch), reads the raw and archive files back, then
+  # deletes the upload and confirms everything is gone. It uses only the
+  # built-in archive parser, so it is independent of installed plugins;
+  # distribution-specific checks belong in the distribution repository.
+  tests:
+    # Disabled by default: opt in per deployment. When true, `helm test <release>`
+    # renders and runs the verification hook described above.
     enabled: false
-    replicaCount: 1
-    podSecurityContext:
-      fsGroup: 1000
-    securityContext:
-      runAsNonRoot: true
-      runAsUser: 1000
-    resources: {}
-    volumes: []
-    volumeMounts: []
-    nodeSelector: {}
-    tolerations: []
-    affinity: {}
-    podAnnotations: {}
-    podLabels: {}
-    livenessProbe:
-      initialDelaySeconds: 30
-      periodSeconds: 120
-      timeoutSeconds: 60
-    readinessProbe:
-      initialDelaySeconds: 30
-      periodSeconds: 120
-      timeoutSeconds: 60
+    # Override the test image; defaults to nomad.image (already present in-cluster,
+    # ships python3 — no extra pull).
+    image: {}
+    # Required. Name of a Secret holding NOMAD credentials. Provide EITHER:
+    #   - key `token`: a pre-created NOMAD app token (recommended; portable,
+    #     works even where the Keycloak realm disables the password grant), OR
+    #   - keys `username` + `password`: a NOMAD account (ROPC login).
+    credentialsSecret: ""
+    # Seconds to wait for processing (and for cleanup) before failing.
+    timeout: 300
 
   ingress:
     enabled: false
-    limitConnections: 32
-    limitConnectionsApi: 8
+    # The Ingress uses ingress-nginx annotations. They are served either by
+    # ingress-nginx (retired upstream) or by Traefik >= 3.6.2 with
+    # providers.kubernetesIngressNGINX enabled, which claims the "nginx" class
+    # and translates them; see custom-values/README.md "Ingress controller".
+    # Max concurrent connections per client IP (nginx limit-connections), for
+    # the main ingress and the separate /api ingress. The GUI fans out many
+    # parallel requests per page load and users behind a shared NAT count as
+    # one IP, so keep these generous; set to 0 to drop the annotation entirely.
+    limitConnections: 128
+    limitConnectionsApi: 32
     className: ""
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
@@ -532,6 +619,15 @@ jupyterhub:
         # It is important to disable nonPrivateIPs otherwise the networkPolicy's will be silently ignored
         nonPrivateIPs: false
   hub:
+    # NORTH hub image with the NORTH KubeSpawner, built from images/k8s in
+    # https://github.com/FAIRmat-NFDI/nomad-north. Its z2jh base version must
+    # match the jupyterhub chart version in Chart.yaml.
+    image:
+      name: ghcr.io/fairmat-nfdi/nomad-north-k8s
+      tag: "2.0.0"
+    # Must be <nomad.config.services.api_base_path>/north, where the proxy
+    # forwards NORTH requests to the hub.
+    baseUrl: /backend/north
     resources:
       requests:
         memory: "256Mi"
@@ -539,6 +635,8 @@ jupyterhub:
       limits:
         memory: "512Mi"
     extraEnv:
+      # NOMAD API that the spawner gets the tools and mounts from
+      NOMAD_API_URL: http://nomad-oasis-app:8000/backend/api/v1
       NOMAD_NORTH_HUB_SERVICE_API_TOKEN:
         valueFrom:
           secretKeyRef:
@@ -559,83 +657,13 @@ jupyterhub:
         token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
         userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
         login_service: keycloak
+        # Keycloak only serves the userdata_url for OpenID Connect tokens.
+        scope:
+          - openid
+          - profile
         username_key: preferred_username
         userdata_params:
           state: state
-    extraConfig:
-      01-prespawn-hook.py: |
-        import os
-        import requests
-        import asyncio
-
-        hub_service_api_token = os.getenv('NOMAD_NORTH_HUB_SERVICE_API_TOKEN')
-
-        # configure nomad service
-        c.JupyterHub.services.append(
-            {
-                "name": "nomad-service",
-                "admin": True,
-                "api_token": hub_service_api_token,
-            }
-        )
-
-        async def pre_spawn_hook(spawner):
-            await spawner.load_user_options()
-            username = spawner.user.name
-
-            spawner.log.info(f"username: {username}")
-            spawner.log.debug(f'Configuring spawner for named server {spawner.name}')
-
-            if spawner.handler.current_user.name != 'nomad-service':
-                # Do nothing, will only launch the default image with no volumes.
-                return
-
-            user_home = spawner.user_options.get('user_home')
-            spawner.log.info(f"user_home: {user_home}")
-            if user_home:
-                spawner.volumes.append({
-                    'name': 'user-home',
-                    'hostPath': {'path': user_home['host_path']}
-                })
-                spawner.volume_mounts.append({
-                    'name': 'user-home',
-                    'mountPath': user_home['mount_path'],
-                    'readOnly': False
-                })
-
-            uploads = spawner.user_options.get('uploads', [])
-            spawner.log.info(f"uploads: {uploads}")
-            for (i, upload) in enumerate(uploads):
-                spawner.volumes.append({
-                    'name': f"uploads-{i}",
-                    'hostPath': {'path': upload['host_path']}
-                })
-                spawner.volume_mounts.append({
-                    'name': f"uploads-{i}",
-                    'mountPath': upload['mount_path'],
-                    'readOnly': False
-                })
-
-            environment = spawner.user_options.get('environment', {})
-            spawner.environment.update(environment)
-
-            tool = spawner.user_options.get('tool')
-            if tool:
-                spawner.image = tool.get('image')
-                spawner.cmd = tool.get('cmd')
-
-                # Workaround to have specific default_url for specific containers without using profiles
-                if tool.get('default_url'):
-                  spawner.default_url = tool.get('default_url')
-
-                # Workaround for webtop based images (no connection to jupyterhub itself)
-                if tool.get('privileged'):
-                    spawner.privileged = True
-                    spawner.allow_privilege_escalation = True
-                    spawner.uid = 0
-
-        c.Spawner.pre_spawn_hook = pre_spawn_hook
-        c.OAuthenticator.allow_all = True
 
   cull:
     enabled: true
@@ -733,7 +761,13 @@ temporal:
       publicClient:
         hostPort: "nomad-oasis-temporal-frontend:7233"
       namespaces:
-        create: true
+        # The subchart's create-default-namespace job addresses the frontend by a
+        # partial `.svc` name, which the Go temporal CLI's gRPC resolver fails to
+        # complete under some cluster DNS configs (ndots + extra search domains),
+        # leaving the namespace unregistered (-> NOMAD "Namespace not found").
+        # We register it reliably from the app/worker initContainer instead
+        # (nomad.temporalInit / "nomad.temporalNamespaceInit").
+        create: false
       persistence:
         default:
           driver: sql

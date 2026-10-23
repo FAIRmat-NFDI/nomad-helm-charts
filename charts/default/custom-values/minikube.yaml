@@ -37,7 +37,7 @@ nomad:
   config:
     services:
       api_host: nomad-oasis.local
-      api_base_path: /nomad-oasis
+      api_base_path: /backend
       api_port: 80
       https: false
       upload_limit: 10
@@ -48,7 +48,6 @@ nomad:
       public_external: /app/.volumes/fs/public
       north_home_external: /app/.volumes/fs/north/users
       prefix_size: 1
-      nomad: /nomad
       working_directory: /app
 
     mongo:
@@ -60,7 +59,6 @@ nomad:
       timeout: 60
       bulk_timeout: 600
       bulk_size: 1000
-      entries_per_material_cap: 1000
 
     logstash:
       enabled: false
@@ -72,8 +70,8 @@ nomad:
 
     meta:
       service: app
-      homepage: http://localhost/nomad-oasis
-      source_url: https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-distro
+      homepage: http://localhost
+      source_url: https://github.com/fairmat-nfdi/nomad-distro-template
       maintainer_email: support@nomad-lab.eu
       footer_links: []
       beta:
@@ -85,7 +83,6 @@ nomad:
 
     process:
       reuse_parser: true
-      index_materials: true
       rfc3161_skip_published: false
 
     reprocess:
@@ -137,8 +134,8 @@ nomad:
       uses_central_user_management: true
 
   image:
-    repository: gitlab-registry.mpcdf.mpg.de/nomad-lab/nomad-distro
-    tag: latest
+    repository: ghcr.io/fairmat-nfdi/nomad-distro-template
+    tag: v2.0.0
     pullPolicy: IfNotPresent
 
   proxy:
@@ -212,6 +209,13 @@ temporal:
   enabled: true
   server:
     replicaCount: 1
+    # Temporal's internal system worker (archival/batch) is not needed by NOMAD and
+    # crashloops in this chart version ("context deadline exceeded"), churning ringpop
+    # membership. Disable via server.worker.enabled=false — NOT replicaCount: 0, which
+    # is ignored because the chart does `default server.replicaCount worker.replicaCount`
+    # and Go templates treat 0 as empty, so it falls back to 1.
+    worker:
+      enabled: false
     config:
       publicClient:
         hostPort: "nomad-oasis-temporal-frontend:7233"
@@ -234,10 +238,6 @@ temporal:
             database: "temporal_visibility"
             user: "temporal"
             password: "temporal"
-  worker:
-    # Temporal's internal system worker (for archival, batch ops) - not needed for NOMAD
-    # Disabled due to known SDK client timeout issue in Temporal helm chart 0.72.0
-    replicaCount: 0
   schema:
     createDatabase:
       enabled: false
@@ -280,19 +280,28 @@ jupyterhub:
   enabled: true
   fullnameOverride: "nomad-oasis-jupyterhub"
   hub:
-    baseUrl: "/nomad-oasis/north"
+    baseUrl: "/backend/north"
     config:
       GenericOAuthenticator:
         client_id: nomad_public
-        oauth_callback_url: http://nomad-oasis.local/nomad-oasis/north/hub/oauth_callback
+        oauth_callback_url: http://nomad-oasis.local/backend/north/hub/oauth_callback
         authorize_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/auth
         token_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/token
         userdata_url: https://nomad-lab.eu/fairdi/keycloak/auth/realms/fairdi_nomad_prod/protocol/openid-connect/userinfo
     extraEnv:
-      NOMAD_OASIS_URL: "http://nomad-oasis-proxy/nomad-oasis"
+      NOMAD_OASIS_URL: "http://nomad-oasis-proxy"
     db:
       type: sqlite-memory
+    # The z2jh NetworkPolicies only admit traffic to the hub from pods labelled
+    # hub.jupyter.org/network-access-hub=true, which the NOMAD app/worker pods
+    # are not. minikube and kind (kindnet) enforce them, so the NOMAD -> hub API
+    # calls time out when launching a tool. They add no isolation on a local
+    # single-user demo, so they are disabled here (hub, proxy and singleuser).
+    networkPolicy:
+      enabled: false
   singleuser:
+    networkPolicy:
+      enabled: false
     podNameTemplate: "nomad-oasis-north-{username}--{servername}"
     uid: 1000
     fsGid: 100
@@ -310,6 +319,9 @@ jupyterhub:
       limit: 2G
       guarantee: 512M
   proxy:
+    chp:
+      networkPolicy:
+        enabled: false
     service:
       type: ClusterIP
   ingress:
