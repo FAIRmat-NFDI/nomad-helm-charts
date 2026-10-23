@@ -102,6 +102,12 @@ if ! command -v k3s &>/dev/null; then
     --write-kubeconfig-mode 644
 fi
 echo "Waiting for the k3s node to be Ready..."
+# kubectl wait fails immediately with "no matching resources found" if the node
+# hasn't registered yet, which happens right after a fresh k3s install.
+for _ in $(seq 1 60); do
+  [ -n "$($KUBECTL get nodes -o name 2>/dev/null)" ] && break
+  sleep 2
+done
 $KUBECTL wait --for=condition=Ready node --all --timeout=120s
 
 echo ""
