@@ -1,0 +1,125 @@
+{{- if .Values.elasticsearch.enabled -}}
+{{- $es := .Values.elasticsearch -}}
+{{- /* Defaults match the NOMAD docker setup: single node, plain HTTP, no auth. */ -}}
+{{- $settings := dict
+    "cluster.name" "nomad"
+    "discovery.type" "single-node"
+    "xpack.security.enabled" "false"
+-}}
+{{- range $key, $value := $es.settings }}
+{{- $_ := set $settings $key $value }}
+{{- end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "nomad.elastic.serviceName" . }}
+  labels:
+    {{- include "nomad.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+spec:
+  replicas: 1
+  serviceName: {{ include "nomad.elastic.serviceName" . }}-headless
+  selector:
+    matchLabels:
+      {{- include "nomad.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: elasticsearch
+  {{- if $es.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "nomad.selectorLabels" . | nindent 10 }}
+          app.kubernetes.io/component: elasticsearch
+      spec:
+        accessModes:
+          - {{ $es.persistence.accessMode | default "ReadWriteOnce" }}
+        {{- if $es.persistence.storageClass }}
+        storageClassName: {{ $es.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $es.persistence.size }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "nomad.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: elasticsearch
+      {{- with $es.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: {{ $es.terminationGracePeriodSeconds }}
+      {{- if .Values.nomad.priorityClass.enabled }}
+      priorityClassName: {{ .Values.nomad.priorityClass.name }}
+      {{- end }}
+      {{- with $es.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $es.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $es.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $es.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if $es.sysctlInitContainer.enabled }}
+      initContainers:
+        {{- include "nomad.elastic.sysctlInit" (dict "image" (include "nomad.elastic.image" .) "pullPolicy" $es.imagePullPolicy "count" $es.sysctlInitContainer.maxMapCount) | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: elasticsearch
+          image: {{ include "nomad.elastic.image" . | quote }}
+          imagePullPolicy: {{ $es.imagePullPolicy }}
+          {{- with $es.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: node.name
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- if $es.esJavaOpts }}
+            - name: ES_JAVA_OPTS
+              value: {{ $es.esJavaOpts | quote }}
+            {{- end }}
+            {{- range $key, $value := $settings }}
+            - name: {{ $key }}
+              value: {{ $value | toString | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 9200
+              protocol: TCP
+            - name: transport
+              containerPort: 9300
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - curl -fsS "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=2s" >/dev/null
+            {{- toYaml $es.readinessProbe | nindent 12 }}
+          {{- with $es.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+      {{- if not $es.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
+{{- end }}

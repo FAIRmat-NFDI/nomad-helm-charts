@@ -84,15 +84,10 @@ mongodb:
     storageClass: "gp2"
 
 elasticsearch:
-  clusterHealthCheckParams: "wait_for_status=yellow&timeout=1s"
   persistence:
     enabled: true
     storageClass: "gp2"
-  volumeClaimTemplate:
-    storageClassName: "gp2"
-    resources:
-      requests:
-        storage: 30Gi
+    size: 30Gi
 
 postgresql:
   primary:

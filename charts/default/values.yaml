@@ -53,6 +53,10 @@ nomad:
       port: 27017
 
     elastic:
+      # Elasticsearch major version NOMAD talks to ("7" or "9"). The bundled
+      # Elasticsearch is 9; set "7" only for an external ES7 cluster.
+      version: "9"
+      scheme: http
       port: 9200
       timeout: 60
       bulk_timeout: 600
@@ -241,7 +245,8 @@ nomad:
     mongo:
       host: ""
 
-    # Elasticsearch settings (host defaults to elasticsearch-master if empty)
+    # Elasticsearch settings (host defaults to {{ .Release.Name }}-elasticsearch,
+    # the bundled ES9, if empty). Set it to use an external cluster.
     elastic:
       host: ""
 
@@ -719,18 +724,62 @@ mongodb:
     timeoutSeconds: 5
     failureThreshold: 3
 
+# Bundled single-node Elasticsearch 9 (StatefulSet <release>-elasticsearch),
+# configured like the NOMAD docker setup: plain HTTP, security disabled.
+# Upgrading from chart 1.x (Elasticsearch 7)? See "Upgrading from chart 1.x:
+# Elasticsearch 7 -> 9" in the README.
 elasticsearch:
   enabled: true
-  replicas: 1
-  minimumMasterNodes: 1
-  # Elasticsearch is memory-bound. The JVM heap should be ~50% of container memory.
-  # These defaults are conservative for development; increase for production.
+  # Flat image keys, like the old elastic/elasticsearch chart.
+  image: docker.elastic.co/elasticsearch/elasticsearch
+  imageTag: "9.5.0"
+  imagePullPolicy: IfNotPresent
+  # JVM options, e.g. "-Xms1g -Xmx1g". Empty lets Elasticsearch size the heap
+  # from the container memory limit (about half of it).
+  esJavaOpts: ""
+  # Extra Elasticsearch settings, passed to the container as environment
+  # variables (setting name -> value). Overrides the defaults (cluster.name,
+  # discovery.type=single-node, xpack.security.enabled=false). Example:
+  #   cluster.routing.allocation.disk.threshold_enabled: "false"
+  settings: {}
+  # Elasticsearch is memory-bound. These defaults are conservative for
+  # development; increase for production.
   resources:
     requests:
       memory: "2Gi"
       cpu: "500m"
     limits:
-      memory: "2Gi" # Hard limit prevents OOM; ES heap is set relative to this
+      memory: "2Gi"
+  persistence:
+    enabled: true
+    size: 30Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+  # Privileged init container raising vm.max_map_count on the node, as the
+  # Elasticsearch bootstrap check requires. Where privileged containers are not
+  # allowed, disable it and set settings."node.store.allow_mmap": "false".
+  sysctlInitContainer:
+    enabled: true
+    maxMapCount: 262144
+  podSecurityContext:
+    fsGroup: 1000
+    runAsUser: 1000
+  securityContext:
+    capabilities:
+      drop:
+        - ALL
+    runAsNonRoot: true
+    runAsUser: 1000
+  readinessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  terminationGracePeriodSeconds: 120
+  podAnnotations: {}
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
 
 temporal:
   enabled: true

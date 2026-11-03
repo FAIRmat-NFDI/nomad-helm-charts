@@ -77,23 +77,17 @@ mongodb:
     storageClass: standard-rwo
 
 elasticsearch:
-  clusterHealthCheckParams: "wait_for_status=yellow&timeout=1s"
   # Autopilot forbids privileged containers, so the init container that raises
   # vm.max_map_count cannot run. Disable it and switch Elasticsearch off mmapfs
   # so it does not trip the vm.max_map_count bootstrap check.
   sysctlInitContainer:
     enabled: false
-  esConfig:
-    elasticsearch.yml: |
-      node.store.allow_mmap: false
+  settings:
+    node.store.allow_mmap: "false"
   persistence:
     enabled: true
     storageClass: standard-rwo
-  volumeClaimTemplate:
-    storageClassName: standard-rwo
-    resources:
-      requests:
-        storage: 20Gi
+    size: 20Gi
 
 postgresql:
   primary:

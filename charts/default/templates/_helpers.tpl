@@ -245,3 +245,52 @@ spec:
     requests:
       storage: {{ $volumeConfig.size }}
 {{- end }}
+
+{{/*
+Elasticsearch. The chart bundles a single-node Elasticsearch 9 StatefulSet
+(<release>-elasticsearch); nomad.infrastructure.elastic.host points NOMAD elsewhere.
+*/}}
+{{- define "nomad.elastic.serviceName" -}}
+{{- printf "%s-elasticsearch" .Release.Name -}}
+{{- end }}
+
+{{- define "nomad.elastic.host" -}}
+{{- .Values.nomad.infrastructure.elastic.host | default (include "nomad.elastic.serviceName" .) -}}
+{{- end }}
+
+{{- define "nomad.elastic.version" -}}
+{{- .Values.nomad.config.elastic.version | default "9" | toString -}}
+{{- end }}
+
+{{- define "nomad.elastic.entriesIndex" -}}
+{{- printf "%s_entries_v1" .Values.nomad.config.mongo.db_name -}}
+{{- end }}
+
+{{/* What NOMAD pods connect to; hashed into a pod annotation so they restart when it changes. */}}
+{{- define "nomad.elastic.target" -}}
+{{- printf "%s://%s:%v/v%s" (.Values.nomad.config.elastic.scheme | default "http") (include "nomad.elastic.host" .) .Values.nomad.config.elastic.port (include "nomad.elastic.version" .) -}}
+{{- end }}
+
+{{- define "nomad.elastic.image" -}}
+{{- printf "%s:%s" .Values.elasticsearch.image (.Values.elasticsearch.imageTag | toString) -}}
+{{- end }}
+
+{{/*
+initContainer that raises vm.max_map_count on the node (Elasticsearch bootstrap
+check). Writes /proc directly so it works on images without the sysctl binary.
+*/}}
+{{- define "nomad.elastic.sysctlInit" -}}
+- name: sysctl
+  image: {{ .image | quote }}
+  imagePullPolicy: {{ .pullPolicy }}
+  command: ["sh", "-c"]
+  args:
+    - |
+      current=$(cat /proc/sys/vm/max_map_count)
+      if [ "$current" -lt {{ .count }} ]; then
+        echo {{ .count }} > /proc/sys/vm/max_map_count
+      fi
+  securityContext:
+    privileged: true
+    runAsUser: 0
+{{- end }}

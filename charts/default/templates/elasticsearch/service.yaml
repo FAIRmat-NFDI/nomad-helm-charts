@@ -1,0 +1,42 @@
+{{- if .Values.elasticsearch.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nomad.elastic.serviceName" . }}
+  labels:
+    {{- include "nomad.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9200
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "nomad.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nomad.elastic.serviceName" . }}-headless
+  labels:
+    {{- include "nomad.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: http
+      port: 9200
+      targetPort: http
+      protocol: TCP
+    - name: transport
+      port: 9300
+      targetPort: transport
+      protocol: TCP
+  selector:
+    {{- include "nomad.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+{{- end }}

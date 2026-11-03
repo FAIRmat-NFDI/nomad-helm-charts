@@ -1,7 +1,4 @@
 dependencies:
-- name: elasticsearch
-  repository: https://helm.elastic.co
-  version: 7.17.3
 - name: jupyterhub
   repository: https://jupyterhub.github.io/helm-chart/
   version: 4.4.2
@@ -14,5 +11,5 @@ dependencies:
 - name: keycloakx
   repository: https://codecentric.github.io/helm-charts
   version: 7.1.9
-digest: sha256:5e03f4b8432707237e295e79e9db196d9374376d9637650a5bc461190cefae10
-generated: "2026-10-14T13:46:55.397783381+02:00"
+digest: sha256:35b5c6d00d20b1b02861989a67a5d318098deeec1cd6fd4854f8b918bf238ff0
+generated: "2026-11-02T16:15:48.698335103+01:00"

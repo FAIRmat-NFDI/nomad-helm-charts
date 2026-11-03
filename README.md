@@ -173,7 +173,7 @@ cert-manager is **controller-agnostic** — it works with nginx, Traefik, Contou
 
 The `default` chart includes these subcharts (all disabled by default, enable as needed):
 
-- **Elasticsearch** 7.17.3 -- Search and indexing
+- **Elasticsearch** 9.5.0 -- Search and indexing (bundled StatefulSet; upgrading from ES7: see the chart README)
 - **MongoDB** 14.0.4 -- Document database
 - **Temporal** 0.72.0 -- Workflow orchestration
 - **PostgreSQL** 12.1.6 -- Temporal persistence backend
