@@ -1,5 +1,5 @@
 {{- $config := .Values.nomad.config -}}
-{{- $path := $config.services.api_base_path -}}
+{{- $path := include "nomad.proxy.publicPath" . -}}
 {{- $apiHost := $config.services.api_host -}}
 {{- $tlsEnabled := or .Values.nomad.ingress.tls .Values.nomad.ingress.certManager.enabled -}}
 
@@ -30,6 +30,19 @@
 
    A ClusterIssuer or Issuer named "{{ .Values.nomad.ingress.certManager.issuerName }}" must also
    exist before certificates will be issued. See custom-values/tls.yaml for examples.
+{{- end }}
+
+{{- if .Values.nomad.tests.enabled }}
+
+✅ Verify the deployment actually processes data (not just that pods are Ready):
+
+     helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }} --logs
+
+   This logs in, uploads a minimal archive.json, waits for processing, checks
+   the entry is indexed and its files readable, then deletes it again — covering
+   Keycloak, Temporal, the worker, MongoDB, Elasticsearch and the shared volumes.
+   It needs nomad.tests.credentialsSecret to point at a Secret with a `token`
+   key (or `username` + `password`).
 {{- end }}
 
 1. Get the application URL by running these commands:

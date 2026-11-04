@@ -1,0 +1,26 @@
+# k3s-specific overlay, applied on top of minikube.yaml by helpers/k3s-setup.sh.
+#
+# k3s enforces Kubernetes NetworkPolicies out of the box (via its embedded
+# kube-router controller), as do current minikube and kind (via kindnet). The
+# JupyterHub (z2jh) chart ships NetworkPolicies that only admit ingress to the
+# hub from pods labelled hub.jupyter.org/network-access-hub=true. The NOMAD
+# app/worker pods do not carry that label, so their calls to the hub API are
+# dropped, surfacing as a refused connection (k3s) or a timeout (kindnet):
+#
+#   requests.exceptions.ConnectionError: HTTPConnectionPool(
+#     host='...-jupyterhub-hub', port=8081): [Errno 111] Connection refused
+#
+# These policies provide no isolation benefit on a single-user local demo, so we
+# disable them here. minikube.yaml and kind.yaml disable them as well; this
+# overlay keeps k3s working when it is layered on other values files.
+jupyterhub:
+  hub:
+    networkPolicy:
+      enabled: false
+  proxy:
+    chp:
+      networkPolicy:
+        enabled: false
+  singleuser:
+    networkPolicy:
+      enabled: false

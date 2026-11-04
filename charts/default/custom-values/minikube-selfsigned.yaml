@@ -22,9 +22,9 @@ jupyterhub:
   hub:
     config:
       GenericOAuthenticator:
-        oauth_callback_url: https://nomad-oasis.local/nomad-oasis/north/hub/oauth_callback
+        oauth_callback_url: https://nomad-oasis.local/backend/north/hub/oauth_callback
     extraEnv:
-      NOMAD_OASIS_URL: "https://nomad-oasis.local/nomad-oasis"
+      NOMAD_OASIS_URL: "https://nomad-oasis.local"
   ingress:
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "true"

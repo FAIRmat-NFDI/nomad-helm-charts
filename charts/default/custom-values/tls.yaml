@@ -22,9 +22,9 @@ jupyterhub:
     config:
       GenericOAuthenticator:
         # Update the OAuth callback URL to use https when TLS is active
-        oauth_callback_url: https://your-domain.com/nomad-oasis/north/hub/oauth_callback
+        oauth_callback_url: https://your-domain.com/backend/north/hub/oauth_callback
     extraEnv:
-      NOMAD_OASIS_URL: "https://your-domain.com/nomad-oasis"
+      NOMAD_OASIS_URL: "https://your-domain.com"
   ingress:
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "true"
