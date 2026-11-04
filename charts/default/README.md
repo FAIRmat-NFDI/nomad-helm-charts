@@ -348,6 +348,91 @@ size their resources and the cluster for the expected load. For multiple app
 replicas on different nodes, use shared persistent storage or an appropriate S3
 setup rather than independent node-local data directories.
 
+## Optional proxy rate limits
+
+`nomad.proxy.rateLimits.enabled` defaults to `false`. Enable it to protect expensive
+endpoints, whether or not the heavy app pool is enabled. Limits and routing are
+configured independently. The defaults below follow the ops deployment's two budgets:
+
+| Budget | Endpoints | Default request limit | Default concurrent requests |
+| --- | --- | --- | --- |
+| Heavy, per client IP | Full upload/entry raw ZIPs, collection archive queries/downloads, entry raw queries | 12 requests/minute, no burst | 1 |
+| Heavy, all clients | Same heavy endpoints | 20 requests/second, burst 4 | 64 |
+| Medium, per client IP | Individual raw files, directory listings, per-entry archives, OPTIMADE structures | 1 request/second, burst 10 | No cap |
+
+Each budget is shared across its endpoints. Individual entry raw files use the
+medium budget, as do individual upload raw files. OPTIMADE requests stay on the
+normal app even when the heavy pool is enabled. Generic downloads, exports, bundle
+imports/exports, and other API/GUI routes retain their existing behavior.
+
+```yaml
+nomad:
+  proxy:
+    rateLimits:
+      enabled: true
+      heavy:
+        enabled: true
+        perIp:
+          enabled: true
+          rate: 12r/m
+          burst: 0
+          maxConnections: 1
+        global:
+          enabled: true
+          rate: 20r/s
+          burst: 4
+          maxConnections: 64
+      medium:
+        enabled: true
+        rate: 1r/s
+        burst: 10
+```
+
+Use `heavy.enabled` or `medium.enabled` to disable a whole budget, or
+`heavy.perIp.enabled` / `heavy.global.enabled` to disable either heavy policy.
+Within an enabled policy, `rate: ""` disables request-rate limiting and
+`maxConnections: 0` disables its concurrency cap. A rate uses NGINX syntax such as
+`12r/m` or `1r/s`; `burst: 0` allows no excess requests. `nodelay: true` (the default)
+serves allowed bursts immediately; set it to `false` to queue them. Shared memory
+zone size is configured with `rateLimits.zoneSize` (default `10m` per zone).
+
+Exceeded limits return JSON with HTTP 429 and a `Retry-After` header, configurable
+with `heavy.retryAfter` (default 5 seconds) and `medium.retryAfter` (1 second).
+Raw upload/file endpoints only consume a budget for GET requests; writes using
+those same routes bypass both request and concurrency limits. Archive POST queries
+remain limited.
+
+Limits apply per proxy pod, shared between its NGINX workers. With multiple proxy
+replicas, the global budget is per replica, not a cluster-wide cap.
+Existing ingress connection limits (`nomad.ingress.limitConnections` and
+`limitConnectionsApi`) remain separate and can reject a request before it reaches
+the proxy.
+
+### Client IPs behind an ingress
+
+When the proxy sits behind an ingress, configure the trusted proxy addresses so
+per-IP limits identify the actual client. For example, replacing the example
+network with your ingress proxy's source addresses:
+
+```yaml
+nomad:
+  proxy:
+    realIp:
+      enabled: true
+      trustedAddresses:
+        - 10.42.0.0/16
+      header: X-Forwarded-For
+      recursive: true
+```
+
+`realIp.enabled` defaults to `false`; enabling it requires a nonempty
+`trustedAddresses` list. Trust only proxies that correctly set the client IP header.
+Without this configuration, limits use the connecting peer's address, which may be
+an ingress address shared by many clients. See NGINX's
+[real IP module](https://nginx.org/en/docs/http/ngx_http_realip_module.html) and
+[request limiting module](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html)
+for the underlying directives.
+
 ## Persistence / Storage
 
 With the default chart, all data volumes use `hostPath`, which mounts directories from the node's local filesystem. This works well for single-node setups (Minikube, Kind) but causes problems on multi-node clusters where pods can land on different nodes and see different or empty data.
