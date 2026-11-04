@@ -376,6 +376,12 @@ nomad:
       timeoutSeconds: 5
 
   app:
+    # Optional separate pool for raw data, directory listings, and archive endpoints.
+    heavy:
+      enabled: false
+      replicaCount: 1
+      # null inherits app.resources; a map replaces them ({} means no requests/limits).
+      resources: null
     replicaCount: 1
     # Number of gunicorn worker processes per app pod
     workers: 1

@@ -1,6 +1,10 @@
 {{- if .Values.nomad.enabled -}}
 {{- $config := .Values.nomad.config -}}
 {{- $app := printf "http://%s-app:8000" (include "nomad.fullname" .) -}}
+{{- $heavyApp := $app -}}
+{{- if .Values.nomad.app.heavy.enabled -}}
+{{- $heavyApp = printf "http://%s-app-heavy:8000" (include "nomad.fullname" .) -}}
+{{- end -}}
 {{- $backendPath := include "nomad.proxy.backendPath" . -}}
 {{- $backendPrefix := include "nomad.proxy.backendPrefix" . -}}
 {{- $publicPath := include "nomad.proxy.publicPath" . -}}
@@ -557,6 +561,45 @@ data:
         etag off;
         proxy_pass {{ $app }};
       }
+
+      {{- if .Values.nomad.app.heavy.enabled }}
+      # Specific raw/archive routes must precede the generic download/upload routes.
+      # Keep raw writes working when they share an endpoint with downloads.
+      location ~ /api/v1/uploads/[^/]+/raw(/.*)?$ {
+        client_max_body_size 35g;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_pass {{ $heavyApp }};
+      }
+
+      location ~ /api/v1/uploads/[^/]+/rawdir(/.*)?$ {
+        proxy_pass {{ $heavyApp }};
+      }
+
+      location ~ /api/v1/entries/archive(/download)?(/query)?/?$ {
+        proxy_buffering off;
+        proxy_pass {{ $heavyApp }};
+      }
+
+      location ~ /api/v1/entries/[^/]+/rawdir/?$ {
+        proxy_pass {{ $heavyApp }};
+      }
+
+      location ~ /api/v1/entries/[^/]+/raw(/.*)?$ {
+        proxy_buffering off;
+        proxy_pass {{ $heavyApp }};
+      }
+
+      location ~ /api/v1/entries/raw(/query)?/?$ {
+        proxy_buffering off;
+        proxy_pass {{ $heavyApp }};
+      }
+
+      location ~ /api/v1/entries/[^/]+/archive(/query|/download)?/?$ {
+        proxy_buffering off;
+        proxy_pass {{ $heavyApp }};
+      }
+      {{- end }}
 
       location ~ /api/v1/(.*/download|uploads/[^/]+/export/?$) {
         proxy_buffering off;
