@@ -15,18 +15,16 @@ spec:
       app.kubernetes.io/component: cpuworker
   template:
     metadata:
-      {{- with .Values.nomad.cpuworker.podAnnotations }}
       annotations:
+        # Restart when NOMAD's Elasticsearch host or version changes, since the
+        # nomad.yaml subPath mount is not refreshed in place.
+        checksum/elastic: {{ include "nomad.elastic.target" . | sha256sum | trunc 16 | quote }}
+        {{- with .Values.nomad.cpuworker.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-        {{- if $.Values.roll }}
+        {{- end }}
+        {{- if .Values.roll }}
         rollme: {{ randAlphaNum 5 | quote }}
         {{- end }}
-      {{- else }}
-      {{- if .Values.roll }}
-      annotations:
-        rollme: {{ randAlphaNum 5 | quote }}
-      {{- end }}
-      {{- end }}
       labels:
         {{- include "nomad.labels" . | nindent 8 }}
         {{- with .Values.nomad.cpuworker.podLabels }}

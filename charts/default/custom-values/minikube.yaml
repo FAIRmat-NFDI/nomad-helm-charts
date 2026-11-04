@@ -18,18 +18,14 @@ mongodb:
 
 elasticsearch:
   enabled: true
-  replicas: 1
-  minimumMasterNodes: 1
   resources:
     requests:
       cpu: "500m"
       memory: "1Gi"
     limits:
       memory: "2Gi"
-  clusterHealthCheckParams: "wait_for_status=yellow&timeout=1s"
-  esConfig:
-    elasticsearch.yml: |
-      cluster.routing.allocation.disk.threshold_enabled: false
+  settings:
+    cluster.routing.allocation.disk.threshold_enabled: "false"
 
 nomad:
   enabled: true

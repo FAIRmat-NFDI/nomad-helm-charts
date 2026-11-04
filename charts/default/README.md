@@ -76,7 +76,7 @@ nomad:
     mongo:
       host: ""  # defaults to {{ .Release.Name }}-mongodb
     elastic:
-      host: ""  # defaults to elasticsearch-master
+      host: ""  # defaults to {{ .Release.Name }}-elasticsearch
 ```
 
 ## Customizing Your Installation
@@ -218,6 +218,84 @@ mongodb:
 
 > [!WARNING]
 > Disabling MongoDB authentication is not recommended for production. Even within a Kubernetes cluster, any pod in the same namespace can access an unauthenticated MongoDB instance.
+
+### Elasticsearch (`elasticsearch`)
+
+The chart runs a single-node **Elasticsearch 9** (`docker.elastic.co/elasticsearch/elasticsearch:9.5.0`)
+as the StatefulSet `<release>-elasticsearch`, set up like the NOMAD docker
+distribution: plain HTTP with security disabled, so keep it reachable only inside the cluster.
+NOMAD reaches it at `<release>-elasticsearch:9200` with `nomad.config.elastic.version: "9"`.
+
+```yaml
+elasticsearch:
+  imageTag: "9.5.0"
+  esJavaOpts: ""          # e.g. "-Xms1g -Xmx1g"; empty = about half the memory limit
+  resources:
+    limits:
+      memory: 2Gi
+  persistence:
+    size: 30Gi
+    storageClass: ""
+  settings:               # any Elasticsearch setting, passed as an environment variable
+    cluster.routing.allocation.disk.threshold_enabled: "false"
+```
+
+On a cluster that forbids privileged containers (e.g. GKE Autopilot), turn off the
+init container that raises `vm.max_map_count` and switch Elasticsearch off mmap:
+
+```yaml
+elasticsearch:
+  sysctlInitContainer:
+    enabled: false
+  settings:
+    node.store.allow_mmap: "false"
+```
+
+To use an external cluster instead, disable the bundled one and point NOMAD at it:
+
+```yaml
+elasticsearch:
+  enabled: false
+nomad:
+  infrastructure:
+    elastic:
+      host: my-elasticsearch.example.org
+  config:
+    elastic:
+      version: "9"   # or "7" for an ES7 cluster (deprecated)
+      scheme: http
+```
+
+## Upgrading from chart 1.x: Elasticsearch 7 -> 9
+
+Chart 1.x ran Elasticsearch 7.17 through the archived `elastic/elasticsearch`
+subchart (StatefulSet `elasticsearch-master`). Chart 2.x runs Elasticsearch 9
+instead, and **ES9 cannot read indices written by ES7**. After the upgrade, NOMAD
+starts on an empty ES9 index. MongoDB and the upload files are not affected.
+
+Move or rebuild the search index as described in the NOMAD
+[migration guide for 2.0](https://docs.nomad-lab.eu/howto/oasis/migrate/v2.0.html#kubernetes-deployments-helm-chart).
+Helm removes the old `elasticsearch-master` StatefulSet but keeps its volume
+(`elasticsearch-master-elasticsearch-master-0`), so the ES7 data is still there
+for the guide's reindex option. Delete that volume yourself once it's no longer needed.
+
+### Values that changed
+
+| Chart 1.x (`elastic/elasticsearch`) | Chart 2.x |
+| --- | --- |
+| `esConfig: {elasticsearch.yml: ...}` | `settings: {<setting>: "<value>"}` |
+| `volumeClaimTemplate.storageClassName` / `.resources.requests.storage` | `persistence.storageClass` / `persistence.size` |
+| `imageTag: 7.17.3` | remove it (default `9.5.0`) |
+| `replicas`, `minimumMasterNodes`, `clusterHealthCheckParams` | not used (single node) |
+
+`image`, `imageTag`, `imagePullPolicy`, `esJavaOpts`, `resources`,
+`persistence.enabled`, `sysctlInitContainer.enabled`, `nodeSelector`, `affinity` and
+`tolerations` keep their names. The bundled `custom-values/*.yaml` are already updated.
+The install fails with a message if `esConfig`, `volumeClaimTemplate`, a non-9.x
+`imageTag` or `replicas` > 1 is still set.
+
+With an external cluster (`nomad.infrastructure.elastic.host`), NOMAD 2.x can still talk
+to Elasticsearch 7 if you set `nomad.config.elastic.version: "7"`, but that support is deprecated.
 
 ## Persistence / Storage
 

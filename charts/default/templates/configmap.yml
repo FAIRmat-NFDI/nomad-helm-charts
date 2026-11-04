@@ -78,17 +78,15 @@ data:
 }}
 {{- $_ := set $computed "mongo" $mongo }}
 
-{{- $elasticHost := .Values.nomad.infrastructure.elastic.host }}
-{{- if not $elasticHost }}
-{{- $elasticHost = "elasticsearch-master" }}
-{{- end }}
 {{- $elastic := dict
-    "host" $elasticHost
+    "version" (include "nomad.elastic.version" .)
+    "scheme" ($config.elastic.scheme | default "http")
+    "host" (include "nomad.elastic.host" .)
     "port" $config.elastic.port
     "timeout" $config.elastic.timeout
     "bulk_timeout" $config.elastic.bulk_timeout
     "bulk_size" $config.elastic.bulk_size
-    "entries_index" (printf "%s_entries_v1" $dbname)
+    "entries_index" (include "nomad.elastic.entriesIndex" .)
 }}
 {{- $_ := set $computed "elastic" $elastic }}
 
