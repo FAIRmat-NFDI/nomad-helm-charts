@@ -297,6 +297,57 @@ The install fails with a message if `esConfig`, `volumeClaimTemplate`, a non-9.x
 With an external cluster (`nomad.infrastructure.elastic.host`), NOMAD 2.x can still talk
 to Elasticsearch 7 if you set `nomad.config.elastic.version: "7"`, but that support is deprecated.
 
+## Optional heavy app pool
+
+Most installations do not need a separate heavy app pool. Leave
+`nomad.app.heavy.enabled: false` (the default) to serve all API traffic with the
+normal app pods.
+
+If sustained download traffic is affecting API responsiveness, enable a separate
+pool to isolate raw data and archive requests from the normal app pods. This can
+help prevent download load from degrading the rest of the deployment. Configure
+its replica count and resource requests/limits to fit your workload:
+
+```yaml
+nomad:
+  app:
+    heavy:
+      enabled: true
+      replicaCount: 2
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2"
+          memory: "4Gi"
+```
+
+`replicaCount` defaults to 1 and must be at least 1 when enabled. `resources`
+defaults to `null`, inheriting `nomad.app.resources`; an explicit map replaces
+those requests and limits. Other settings, including the image, worker count,
+security, scheduling, volumes, and credentials, are shared with `nomad.app`.
+
+When enabled, the proxy sends these endpoints to the `app-heavy` Service:
+
+- Upload raw files/ZIPs and raw directory listings (`uploads/{id}/raw`,
+  `uploads/{id}/raw/...`, and `uploads/{id}/rawdir...`).
+- Entry raw files/ZIPs, raw queries, and directory listings
+  (`entries/{id}/raw...`, `entries/raw[/query]`, and `entries/{id}/rawdir`).
+- Collection and per-entry archive queries/downloads (`entries/archive...` and
+  `entries/{id}/archive...`).
+
+Other routes, including upload creation/imports, bundle imports/exports, generic
+download/export routes, and the GUI, continue to use the normal app. Raw writes
+sharing a routed raw endpoint also use the heavy pool. Disabling the option
+removes the heavy Deployment and Service and restores all API routes to the normal
+app. The proxy rolls out automatically when its routing configuration changes.
+
+The separate pods still share storage, databases, nodes, and network capacity;
+size their resources and the cluster for the expected load. For multiple app
+replicas on different nodes, use shared persistent storage or an appropriate S3
+setup rather than independent node-local data directories.
+
 ## Persistence / Storage
 
 With the default chart, all data volumes use `hostPath`, which mounts directories from the node's local filesystem. This works well for single-node setups (Minikube, Kind) but causes problems on multi-node clusters where pods can land on different nodes and see different or empty data.
