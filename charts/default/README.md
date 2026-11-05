@@ -393,6 +393,35 @@ When `existingClaim` is set, the chart references that PVC directly and does not
        storageClass: efs-sc
    ```
 
+### S3 public storage
+
+`nomad.config.fs.public_fs` is passed through to NOMAD, including endpoint options,
+read modes, redirects, and storage gateway settings. For example:
+
+```yaml
+nomad:
+  config:
+    fs:
+      s3Secret: nomad-s3
+      public_fs:
+        protocol: s3
+        bucket: nomad-public
+        simplify_path: true
+        read_mode: remote_then_local
+        extra:
+          client_kwargs:
+            endpoint_url: https://s3.example.org
+```
+
+Create `nomad-s3` in the release namespace with keys `access-key` and `secret-key`.
+The app and all worker types receive `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY` from that Secret. Set `fs.s3AccessKeyIdKey` and
+`fs.s3SecretAccessKeyKey` to use other key names. Leave `s3Secret` empty to use
+credentials supplied by the AWS credential chain, including workload identity.
+Credentials do not need to appear in `public_fs.extra` or the ConfigMap.
+
+Existing public and staging volumes remain available for local fallback and staging.
+
 ### Staging volume with in-memory storage
 
 The `worker.storage: "memory"` setting is preserved regardless of persistence. When set, the staging volume uses `emptyDir` with `medium: Memory` instead of a PVC:
@@ -620,6 +649,64 @@ After installation, you may need to create the default namespace manually:
 kubectl exec -it $(kubectl get pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=admintools -o jsonpath='{.items[0].metadata.name}') \
   -- tctl --address nomad-oasis-temporal-frontend:7233 namespace register default --retention 168h
 ```
+
+### External Temporal, TLS, OIDC, and processing limits
+
+TLS and OIDC are disabled by default. The standard bundled Temporal setup needs
+no OIDC tokens, client secrets, or TLS certificates; the settings below are optional
+and only needed when connecting to a cluster that requires them.
+
+NOMAD Temporal options under `nomad.config.temporal` are passed through, including
+`entry_concurrency_target`, `entry_workflow_batch_concurrency`,
+`entry_activity_batch_size`, `graceful_shutdown_timeout`, `processing_timeouts`,
+and `internal_worker` / `cpu_worker` / `gpu_worker` settings. Unset concurrency
+options retain NOMAD's defaults. The chart's `ui_enabled` and structured
+`prometheus_bind_address` options retain their existing behavior.
+
+```yaml
+nomad:
+  temporalInit:
+    enabled: false
+  config:
+    temporal:
+      host: temporal.example.org
+      port: 7233
+      namespace: nomad
+      use_tls: true
+      tls_domain: temporal.example.org
+      tls_server_root_ca_cert: /etc/ssl/certs/ca-certificates.crt
+      entry_concurrency_target: 15
+      entry_workflow_batch_concurrency: 1
+      entry_activity_batch_size: 5
+      graceful_shutdown_timeout: 120
+      processing_timeouts:
+        internal_processing_heartbeat_timeout: 900
+      oidc:
+        enabled: true
+        token_url: https://identity.example.org/realms/nomad/protocol/openid-connect/token
+        client_id: nomad
+  secrets:
+    temporal:
+      oidc:
+        existingSecret: nomad-temporal-oidc
+        key: oidc
+
+temporal:
+  enabled: false
+```
+
+For an external secured cluster, provision the Temporal namespace separately and
+set `nomad.temporalInit.enabled: false`: the bundled namespace init container
+uses an unauthenticated plaintext CLI connection. PostgreSQL can also be disabled
+if no bundled service needs it. For custom CA or mTLS files, use the existing
+`nomad.volumes` and `nomad.volumeMounts` settings to mount them on the app and workers.
+Set worker pod termination grace periods longer than the configured shutdown timeout.
+
+The referenced Secret's `oidc` key contains a JSON object, for example
+`{"client_secret":"YOUR_CLIENT_SECRET"}`. The app and every worker receive it as
+`NOMAD_TEMPORAL_OIDC`; NOMAD merges it with the non-secret OIDC settings from
+`nomad.yaml`. You can also put the entire OIDC object in this Secret. No Secret
+lookup or credential interpolation into the ConfigMap is performed.
 
 ## Authentication (Keycloak)
 

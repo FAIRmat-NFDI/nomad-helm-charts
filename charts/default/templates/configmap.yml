@@ -48,6 +48,9 @@ data:
 {{- if $config.fs.archive_version_suffix }}
 {{- $_ := set $fs "archive_version_suffix" $config.fs.archive_version_suffix }}
 {{- end }}
+{{- with $config.fs.public_fs }}
+{{- $_ := set $fs "public_fs" . }}
+{{- end }}
 {{- $_ := set $computed "fs" $fs }}
 
 {{- $mongoHost := .Values.nomad.infrastructure.mongo.host }}
@@ -101,33 +104,18 @@ data:
 }}
 {{- $_ := set $computed "logstash" $logstash }}
 
-{{- if $config.temporal.enabled }}
-{{- $temporalHost := default (printf "%s-temporal-frontend" .Release.Name) $config.temporal.host }}
-{{- $temporal := dict
-    "enabled" true
-    "host" $temporalHost
-    "namespace" $config.temporal.namespace
-}}
-{{- if $config.temporal.graceful_shutdown_timeout }}
-{{- $_ := set $temporal "graceful_shutdown_timeout" $config.temporal.graceful_shutdown_timeout }}
+{{- /* Keep new Temporal options intact; these two values are chart-only. */}}
+{{- $temporal := deepCopy (omit $config.temporal "ui_enabled" "prometheus_bind_address") }}
+{{- range $key, $value := $temporal }}
+{{- if or (eq $value nil) (and (kindIs "map" $value) (empty $value)) (and (kindIs "string" $value) (empty $value)) }}
+{{- $_ := unset $temporal $key }}
 {{- end }}
-{{- if $config.temporal.processing_timeouts }}
-{{- $_ := set $temporal "processing_timeouts" $config.temporal.processing_timeouts }}
 {{- end }}
+{{- $_ := set $temporal "host" (default (printf "%s-temporal-frontend" .Release.Name) $config.temporal.host) }}
 {{- if $config.temporal.prometheus_bind_address.enabled }}
 {{- $_ := set $temporal "prometheus_bind_address" (printf "%s:%v" $config.temporal.prometheus_bind_address.host $config.temporal.prometheus_bind_address.port) }}
 {{- end }}
-{{- if $config.temporal.internal_worker }}
-{{- $_ := set $temporal "internal_worker" $config.temporal.internal_worker }}
-{{- end }}
-{{- if $config.temporal.cpu_worker }}
-{{- $_ := set $temporal "cpu_worker" $config.temporal.cpu_worker }}
-{{- end }}
-{{- if $config.temporal.gpu_worker }}
-{{- $_ := set $temporal "gpu_worker" $config.temporal.gpu_worker }}
-{{- end }}
 {{- $_ := set $computed "temporal" $temporal }}
-{{- end }}
 
 {{- $north := dict
     "enabled" $config.north.enabled

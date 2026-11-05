@@ -47,6 +47,12 @@ nomad:
       prefix_size: 1
       archive_version_suffix: []
       working_directory: /app
+      # Passed through to NOMAD (S3 endpoint, redirects, read mode).
+      public_fs: {}
+      # Existing Secret in the release namespace. Empty uses the AWS credential chain.
+      s3Secret: ""
+      s3AccessKeyIdKey: access-key
+      s3SecretAccessKeyKey: secret-key
 
     mongo:
       db_name: nomad_oasis
@@ -75,6 +81,19 @@ nomad:
       host: ""
       graceful_shutdown_timeout: null
       processing_timeouts: {}
+      # Unset values use NOMAD's application defaults.
+      entry_concurrency_target: null
+      entry_workflow_batch_concurrency: null
+      entry_activity_batch_size: null
+      use_tls: false
+      tls_domain: ""
+      tls_server_root_ca_cert: ""
+      oidc:
+        enabled: false
+        token_url: ""
+        client_id: ""
+        # Prefer nomad.secrets.temporal.oidc over a literal secret here.
+        client_secret: ""
       prometheus_bind_address:
         enabled: false
         host: 0.0.0.0
@@ -255,6 +274,12 @@ nomad:
       host: ""
 
   secrets:
+    temporal:
+      oidc:
+        # JSON object, e.g. {"client_secret":"..."}; merged with config.temporal.oidc.
+        existingSecret: ""
+        key: oidc
+
     # API secret for cryptographic operations
     api:
       existingSecret: ""
@@ -458,6 +483,7 @@ nomad:
       timeoutSeconds: 10
 
   gpuworker:
+    terminationGracePeriodSeconds: 300
     replicaCount: 0
     image:
       repository: ""
@@ -489,6 +515,7 @@ nomad:
       timeoutSeconds: 1
 
   cpuworker:
+    terminationGracePeriodSeconds: 300
     replicaCount: 0
     image:
       repository: ""
