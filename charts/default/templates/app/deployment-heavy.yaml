@@ -1,0 +1,12 @@
+{{- if and .Values.nomad.enabled .Values.nomad.app.heavy.enabled -}}
+{{- if lt (int .Values.nomad.app.heavy.replicaCount) 1 -}}
+{{- fail "nomad.app.heavy.replicaCount must be at least 1 when the heavy app is enabled" -}}
+{{- end -}}
+{{- /* Share the API deployment definition, overriding only the heavy pool settings. */ -}}
+{{- $values := deepCopy .Values -}}
+{{- $_ := set $values.nomad.app "replicaCount" .Values.nomad.app.heavy.replicaCount -}}
+{{- if ne .Values.nomad.app.heavy.resources nil -}}
+{{- $_ := set $values.nomad.app "resources" .Values.nomad.app.heavy.resources -}}
+{{- end -}}
+{{- include "nomad.appDeployment" (merge (dict "Values" $values "appComponent" "app-heavy") (omit . "Values")) }}
+{{- end }}

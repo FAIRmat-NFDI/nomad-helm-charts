@@ -15,10 +15,12 @@ spec:
       app.kubernetes.io/component: proxy
   template:
     metadata:
-      {{- with .Values.nomad.proxy.podAnnotations }}
       annotations:
+        # Reload routes when the heavy pool is enabled or disabled on upgrade.
+        checksum/config: {{ include (print $.Template.BasePath "/proxy/configmap.yml") . | sha256sum | quote }}
+        {{- with .Values.nomad.proxy.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         {{- include "nomad.labels" . | nindent 8 }}
         {{- with .Values.nomad.proxy.podLabels }}

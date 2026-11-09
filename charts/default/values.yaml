@@ -338,6 +338,37 @@ nomad:
     timeout: 60
     editTimeout: 60
     connectionTimeout: 10
+    # Independent of app.heavy.enabled; applies to selected expensive endpoints.
+    rateLimits:
+      enabled: false
+      zoneSize: 10m
+      heavy:
+        enabled: true
+        retryAfter: 5
+        perIp:
+          enabled: true
+          rate: 12r/m
+          burst: 0
+          nodelay: true
+          maxConnections: 1
+        global:
+          enabled: true
+          rate: 20r/s
+          burst: 4
+          nodelay: true
+          maxConnections: 64
+      medium:
+        enabled: true
+        rate: 1r/s
+        burst: 10
+        nodelay: true
+        retryAfter: 1
+    # Enable behind an ingress to rate-limit actual clients rather than the ingress IP.
+    realIp:
+      enabled: false
+      trustedAddresses: []
+      header: X-Forwarded-For
+      recursive: true
     image:
       repository: nginx
       tag: 1.27.4-alpine
@@ -376,6 +407,12 @@ nomad:
       timeoutSeconds: 5
 
   app:
+    # Optional separate pool for raw data, directory listings, and archive endpoints.
+    heavy:
+      enabled: false
+      replicaCount: 1
+      # null inherits app.resources; a map replaces them ({} means no requests/limits).
+      resources: null
     replicaCount: 1
     # Number of gunicorn worker processes per app pod
     workers: 1
