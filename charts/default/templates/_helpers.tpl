@@ -294,3 +294,30 @@ check). Writes /proc directly so it works on images without the sysctl binary.
     privileged: true
     runAsUser: 0
 {{- end }}
+
+
+{{/* Credentials shared by the API and all Temporal worker types. */}}
+{{- define "nomad.storageTemporalEnv" -}}
+{{- $fs := .Values.nomad.config.fs -}}
+{{- if $fs.s3Secret }}
+- name: AWS_ACCESS_KEY_ID
+  valueFrom:
+    secretKeyRef:
+      name: {{ $fs.s3Secret | quote }}
+      key: {{ $fs.s3AccessKeyIdKey | quote }}
+- name: AWS_SECRET_ACCESS_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ $fs.s3Secret | quote }}
+      key: {{ $fs.s3SecretAccessKeyKey | quote }}
+{{- end }}
+{{- with .Values.nomad.secrets.temporal.oidc }}
+{{- if .existingSecret }}
+- name: NOMAD_TEMPORAL_OIDC
+  valueFrom:
+    secretKeyRef:
+      name: {{ .existingSecret | quote }}
+      key: {{ .key | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
