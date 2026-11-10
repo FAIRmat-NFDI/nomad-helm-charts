@@ -297,6 +297,31 @@ check). Writes /proc directly so it works on images without the sysctl binary.
 
 
 {{/* Credentials shared by the API and all Temporal worker types. */}}
+{{/*
+Elasticsearch basic auth. NOMAD only authenticates when both username and
+password are set, so the username defaults to "elastic" once a password secret
+is configured. The password is passed as NOMAD_ELASTIC_PASSWORD.
+*/}}
+{{- define "nomad.elastic.username" -}}
+{{- if .Values.nomad.config.elastic.username -}}
+{{- .Values.nomad.config.elastic.username -}}
+{{- else if .Values.nomad.secrets.elastic.existingSecret -}}
+elastic
+{{- end -}}
+{{- end }}
+
+{{- define "nomad.elasticAuthEnv" -}}
+{{- with .Values.nomad.secrets.elastic }}
+{{- if .existingSecret }}
+- name: NOMAD_ELASTIC_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ .existingSecret | quote }}
+      key: {{ .key | default "elastic" | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{- define "nomad.storageTemporalEnv" -}}
 {{- $fs := .Values.nomad.config.fs -}}
 {{- if $fs.s3Secret }}

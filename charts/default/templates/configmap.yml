@@ -91,6 +91,9 @@ data:
     "bulk_size" $config.elastic.bulk_size
     "entries_index" (include "nomad.elastic.entriesIndex" .)
 }}
+{{- with include "nomad.elastic.username" . }}
+{{- $_ := set $elastic "username" . }}
+{{- end }}
 {{- $_ := set $computed "elastic" $elastic }}
 
 {{- $logstashHost := .Values.nomad.infrastructure.logstash.host }}

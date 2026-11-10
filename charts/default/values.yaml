@@ -64,6 +64,9 @@ nomad:
       version: "9"
       scheme: http
       port: 9200
+      # Basic-auth user for a secured Elasticsearch. Defaults to "elastic" when
+      # nomad.secrets.elastic.existingSecret is set; the password comes from that secret.
+      username: ""
       timeout: 60
       bulk_timeout: 600
       bulk_size: 1000
@@ -155,7 +158,12 @@ nomad:
 
     datacite:
       enabled: false
+      # DataCite REST API. Use https://api.datacite.org for production DOIs.
+      mds_host: "https://api.test.datacite.org"
       prefix: "10.17172"
+      # Path below the site root that dataset DOIs resolve to.
+      dataset_path: "/datasets/doi"
+      # Credentials: nomad.secrets.datacite (keys "user" and "password").
 
     north:
       enabled: false
@@ -279,6 +287,12 @@ nomad:
         # JSON object, e.g. {"client_secret":"..."}; merged with config.temporal.oidc.
         existingSecret: ""
         key: oidc
+
+    # Elasticsearch password (basic auth, user from nomad.config.elastic.username).
+    # The key default matches the ECK secret <cluster>-es-elastic-user.
+    elastic:
+      existingSecret: ""
+      key: "elastic"
 
     # API secret for cryptographic operations
     api:
