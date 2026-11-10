@@ -55,10 +55,15 @@ nomad:
       s3SecretAccessKeyKey: secret-key
 
     mongo:
+      # Defaults to {{ .Release.Name }}-mongodb (the bundled MongoDB) if empty.
+      host: ""
       db_name: nomad_oasis
       port: 27017
 
     elastic:
+      # Defaults to {{ .Release.Name }}-elasticsearch (the bundled ES9) if empty.
+      # Set it to use an external cluster.
+      host: ""
       # Elasticsearch major version NOMAD talks to ("7" or "9"). The bundled
       # Elasticsearch is 9; set "7" only for an external ES7 cluster.
       version: "9"
@@ -73,6 +78,8 @@ nomad:
 
     logstash:
       enabled: false
+      # Defaults to {{ .Release.Name }}-logstash if empty.
+      host: ""
       tcp_port: 5000
 
     temporal:
@@ -266,20 +273,6 @@ nomad:
       existingClaim: ""
 
   imagePullSecrets: []
-
-  infrastructure:
-    # MongoDB settings (host defaults to {{ .Release.Name }}-mongodb if empty)
-    mongo:
-      host: ""
-
-    # Elasticsearch settings (host defaults to {{ .Release.Name }}-elasticsearch,
-    # the bundled ES9, if empty). Set it to use an external cluster.
-    elastic:
-      host: ""
-
-    # Logstash settings
-    logstash:
-      host: ""
 
   secrets:
     temporal:

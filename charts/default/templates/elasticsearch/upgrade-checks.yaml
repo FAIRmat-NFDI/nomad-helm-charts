@@ -19,7 +19,7 @@ chart 1.x (elastic/elasticsearch 7 subchart) that would otherwise be silently ig
 {{- end }}
 {{- end }}
 {{- if gt (int ($es.replicas | default 1)) 1 }}
-{{- $oldKeys = append $oldKeys "elasticsearch.replicas > 1 (the bundled ES9 is single-node; point nomad.infrastructure.elastic.host at an external cluster for more)" }}
+{{- $oldKeys = append $oldKeys "elasticsearch.replicas > 1 (the bundled ES9 is single-node; point nomad.config.elastic.host at an external cluster for more)" }}
 {{- end }}
 {{- if $oldKeys }}
 {{- fail (printf "%s belonged to the old elastic/elasticsearch 7 subchart and are no longer used (Elasticsearch is now a single-node ES9 StatefulSet: use elasticsearch.settings and elasticsearch.persistence instead); %s" (join ", " $oldKeys) $docs) }}

@@ -118,7 +118,6 @@ All configuration lives under the `nomad` key in your values file. See [`charts/
 | `nomad.proxy`, `nomad.app`, `nomad.worker` | Replica counts, resources, timeouts                        |
 | `nomad.ingress`                            | Ingress class, annotations, TLS, and cert-manager settings |
 | `nomad.secrets`                            | API, Keycloak, and other secrets                           |
-| `nomad.infrastructure`                     | Service host overrides (auto-detected by default)          |
 
 > [!TIP]
 > To access the latest features and improvements, we recommend updating the `nomad.image.tag` to the latest stable version. You can find the available tags in the [GitLab Registry](https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-FAIR/-/container_registry).

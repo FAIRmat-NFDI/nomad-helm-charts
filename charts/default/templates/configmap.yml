@@ -53,7 +53,7 @@ data:
 {{- end }}
 {{- $_ := set $computed "fs" $fs }}
 
-{{- $mongoHost := .Values.nomad.infrastructure.mongo.host }}
+{{- $mongoHost := $config.mongo.host }}
 {{- if not $mongoHost }}
 {{- $mongoHost = printf "%s-mongodb" .Release.Name }}
 {{- end }}
@@ -96,7 +96,7 @@ data:
 {{- end }}
 {{- $_ := set $computed "elastic" $elastic }}
 
-{{- $logstashHost := .Values.nomad.infrastructure.logstash.host }}
+{{- $logstashHost := $config.logstash.host }}
 {{- if not $logstashHost }}
 {{- $logstashHost = printf "%s-logstash" .Release.Name }}
 {{- end }}

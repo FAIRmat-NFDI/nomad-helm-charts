@@ -171,14 +171,6 @@ nomad:
       limits:
         memory: "4Gi"
 
-  infrastructure:
-    mongo:
-      host: "" # defaults to {{ .Release.Name }}-mongodb
-    elastic:
-      host: "" # defaults to elasticsearch-master
-    logstash:
-      host: ""
-
   secrets:
     api:
       existingSecret: ""

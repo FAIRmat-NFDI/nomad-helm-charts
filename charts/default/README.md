@@ -67,16 +67,19 @@ nomad:
       autoGenerate: true    # Or auto-generate random secret
 ```
 
-### `nomad.infrastructure` (Service Discovery)
-Host overrides for external services. If empty, hosts are auto-computed from the release name.
+### Service hosts (`nomad.config.mongo`, `.elastic`, `.logstash`)
+Each service's host sits next to its other settings in `nomad.config`. If empty,
+the host is computed from the release name and points at the bundled service.
 
 ```yaml
 nomad:
-  infrastructure:
+  config:
     mongo:
       host: ""  # defaults to {{ .Release.Name }}-mongodb
     elastic:
       host: ""  # defaults to {{ .Release.Name }}-elasticsearch
+    logstash:
+      host: ""  # defaults to {{ .Release.Name }}-logstash
 ```
 
 ## Customizing Your Installation
@@ -257,11 +260,9 @@ To use an external cluster instead, disable the bundled one and point NOMAD at i
 elasticsearch:
   enabled: false
 nomad:
-  infrastructure:
-    elastic:
-      host: my-elasticsearch.example.org
   config:
     elastic:
+      host: my-elasticsearch.example.org
       version: "9"   # or "7" for an ES7 cluster (deprecated)
       scheme: http
 ```
@@ -294,7 +295,7 @@ for the guide's reindex option. Delete that volume yourself once it's no longer 
 The install fails with a message if `esConfig`, `volumeClaimTemplate`, a non-9.x
 `imageTag` or `replicas` > 1 is still set.
 
-With an external cluster (`nomad.infrastructure.elastic.host`), NOMAD 2.x can still talk
+With an external cluster (`nomad.config.elastic.host`), NOMAD 2.x can still talk
 to Elasticsearch 7 if you set `nomad.config.elastic.version: "7"`, but that support is deprecated.
 
 ## Optional heavy app pool

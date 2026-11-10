@@ -248,14 +248,14 @@ spec:
 
 {{/*
 Elasticsearch. The chart bundles a single-node Elasticsearch 9 StatefulSet
-(<release>-elasticsearch); nomad.infrastructure.elastic.host points NOMAD elsewhere.
+(<release>-elasticsearch); nomad.config.elastic.host points NOMAD elsewhere.
 */}}
 {{- define "nomad.elastic.serviceName" -}}
 {{- printf "%s-elasticsearch" .Release.Name -}}
 {{- end }}
 
 {{- define "nomad.elastic.host" -}}
-{{- .Values.nomad.infrastructure.elastic.host | default (include "nomad.elastic.serviceName" .) -}}
+{{- .Values.nomad.config.elastic.host | default (include "nomad.elastic.serviceName" .) -}}
 {{- end }}
 
 {{- define "nomad.elastic.version" -}}
