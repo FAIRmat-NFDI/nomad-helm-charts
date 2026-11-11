@@ -82,6 +82,9 @@ nomad:
       host: ""  # defaults to {{ .Release.Name }}-logstash
 ```
 
+The former `nomad.infrastructure.<service>.host` keys are deprecated but still read
+when the matching `nomad.config.<service>.host` is empty. Move them to `nomad.config`.
+
 ## Customizing Your Installation
 
 When deploying your own NOMAD Oasis, you should create a custom values file based on one of the provided examples. These are the key settings to review:

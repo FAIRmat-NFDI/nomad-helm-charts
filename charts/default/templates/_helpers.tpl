@@ -254,8 +254,18 @@ Elasticsearch. The chart bundles a single-node Elasticsearch 9 StatefulSet
 {{- printf "%s-elasticsearch" .Release.Name -}}
 {{- end }}
 
+{{/*
+Host of an external service (mongo, elastic, logstash): nomad.config.<service>.host,
+else the deprecated nomad.infrastructure.<service>.host (chart <= 2.0), else "".
+Usage: include "nomad.serviceHost" (dict "root" . "service" "mongo")
+*/}}
+{{- define "nomad.serviceHost" -}}
+{{- $config := index .root.Values.nomad.config .service | default dict -}}
+{{- $config.host | default (dig "infrastructure" .service "host" "" .root.Values.nomad) -}}
+{{- end }}
+
 {{- define "nomad.elastic.host" -}}
-{{- .Values.nomad.config.elastic.host | default (include "nomad.elastic.serviceName" .) -}}
+{{- include "nomad.serviceHost" (dict "root" . "service" "elastic") | default (include "nomad.elastic.serviceName" .) -}}
 {{- end }}
 
 {{- define "nomad.elastic.version" -}}

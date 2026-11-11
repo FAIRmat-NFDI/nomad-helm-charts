@@ -1,0 +1,87 @@
+name: Publish Dev Charts
+
+# Publishes every chart as a pre-release OCI package to
+# oci://ghcr.io/<owner>/charts/<chart> with version <Chart.yaml version>-dev.<run number>,
+# e.g. 2.0.1-dev.57. Tagged releases still go through release.yaml (gh-pages index);
+# this registry path only ever holds dev builds.
+#
+# Runs on every push to develop; run it manually ("Run workflow") to publish any other branch.
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - "charts/**"
+      - ".github/workflows/dev-release.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: dev-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Add Helm repositories
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo add temporal https://go.temporal.io/helm-charts
+          helm repo add jupyterhub https://jupyterhub.github.io/helm-chart/
+          helm repo add codecentric https://codecentric.github.io/helm-charts
+          helm repo update
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Package and push charts
+        run: |
+          # GHCR repository paths must be lowercase (owner is FAIRmat-NFDI).
+          registry="oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts"
+          {
+            echo "## Dev charts from \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA::7}\`"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for chart in charts/*/; do
+            [ -f "$chart/Chart.yaml" ] || continue
+            name=$(sed -n 's/^name: *//p' "$chart/Chart.yaml" | tr -d '"'"'")
+            base=$(sed -n 's/^version: *//p' "$chart/Chart.yaml" | tr -d '"'"'")
+            version="${base%%-*}-dev.${GITHUB_RUN_NUMBER}"
+
+            helm dependency update "$chart"
+            helm package "$chart" --version "$version" --destination dist
+            helm push "dist/${name}-${version}.tgz" "$registry"
+
+            {
+              echo '```bash'
+              echo "helm upgrade --install <release> ${registry}/${name} --version ${version} -f <values.yaml>"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      # Keep the newest 20 dev builds. Every version in this package is a dev build
+      # (releases are not pushed to OCI), so nothing else can be removed. Note that
+      # delete-only-pre-release-versions would match nothing here: for container
+      # packages the version name is the digest, not the tag.
+      - name: Prune old dev builds
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: charts/default
+          package-type: container
+          min-versions-to-keep: 20

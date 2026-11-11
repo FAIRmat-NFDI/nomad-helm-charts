@@ -57,6 +57,23 @@ See [charts/default/values.yaml](charts/default/values.yaml) for all options, or
 
 > **Quick Note:** By default, user authentication uses the central NOMAD Keycloak server. To configure your own identity provider, see the [Authentication section](charts/default/README.md#authentication-keycloak) in the chart documentation.
 
+### Development Builds
+
+Every push to `develop` publishes a pre-release of the chart to the GitHub Container
+Registry as `<version>-dev.<build>` (for example `2.0.1-dev.57`); other branches can be
+published by running the *Publish Dev Charts* workflow manually. Development builds are
+not in the Helm repository above. Install them from the OCI registry with an explicit
+version (Helm 3.8+, no `helm repo add` needed):
+
+```bash
+helm upgrade --install nomad-oasis oci://ghcr.io/fairmat-nfdi/charts/default \
+  --version 2.0.1-dev.57 -f my-values.yaml
+```
+
+The available versions are listed on the repository's *Packages* page; the workflow run
+summary shows the exact command for each build. Only the 20 most recent development
+builds are kept, so don't rely on them for production.
+
 ### From Source
 
 Clone this repository and install directly from the charts directory.
