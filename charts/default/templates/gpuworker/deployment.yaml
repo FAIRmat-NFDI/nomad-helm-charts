@@ -119,6 +119,17 @@ spec:
             {{- end }}
           # Liveness and readiness probes check the Python Temporal worker's HTTP health server.
           command: ["python", "-m", "nomad.cli", "admin", "run", "action-gpu-worker"]
+          {{- with .Values.nomad.gpuworker.startupProbe }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: {{ .initialDelaySeconds | default 10 }}
+            periodSeconds: {{ .periodSeconds | default 10 }}
+            timeoutSeconds: {{ .timeoutSeconds | default 5 }}
+            failureThreshold: {{ .failureThreshold | default 30 }}
+            successThreshold: 1
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /health
