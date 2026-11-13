@@ -481,6 +481,9 @@ nomad:
       initialCooldownPeriod: 600
       targetQueueSize: 5
       temporal:
+        # Temporal frontend endpoint (host:port) for KEDA. Leave unset to use
+        # nomad.config.temporal.host:7233, or <release>-temporal-frontend.<namespace>.svc.cluster.local:7233.
+        endpoint: ""
         taskQueue: nomad-internal-workflows-task-queue
         queueTypes: workflow,activity
       advanced:
