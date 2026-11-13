@@ -1,5 +1,14 @@
 {{- if .Values.nomad.worker.autoscaling.enabled }}
 {{- $config := .Values.nomad.config -}}
+{{- $temporalEndpoint := .Values.nomad.worker.autoscaling.temporal.endpoint -}}
+{{- if not $temporalEndpoint -}}
+{{- $host := $config.temporal.host | default (printf "%s-temporal-frontend.%s.svc.cluster.local" .Release.Name .Release.Namespace) -}}
+{{- if contains ":" $host -}}
+{{- $temporalEndpoint = $host -}}
+{{- else -}}
+{{- $temporalEndpoint = printf "%s:7233" $host -}}
+{{- end -}}
+{{- end -}}
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -16,7 +25,7 @@ spec:
   triggers:
   - type: temporal
     metadata:
-      endpoint: "{{ printf "%s-temporal-frontend.%s.svc.cluster.local" .Release.Name .Release.Namespace }}:7233"
+      endpoint: {{ $temporalEndpoint | quote }}
       namespace: "{{ $config.temporal.namespace }}"
       taskQueue: "{{ .Values.nomad.worker.autoscaling.temporal.taskQueue }}"
       targetQueueSize: {{ .Values.nomad.worker.autoscaling.targetQueueSize | quote }}
