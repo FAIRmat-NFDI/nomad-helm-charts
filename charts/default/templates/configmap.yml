@@ -53,7 +53,7 @@ data:
 {{- end }}
 {{- $_ := set $computed "fs" $fs }}
 
-{{- $mongoHost := .Values.nomad.infrastructure.mongo.host }}
+{{- $mongoHost := include "nomad.serviceHost" (dict "root" . "service" "mongo") }}
 {{- if not $mongoHost }}
 {{- $mongoHost = printf "%s-mongodb" .Release.Name }}
 {{- end }}
@@ -91,9 +91,12 @@ data:
     "bulk_size" $config.elastic.bulk_size
     "entries_index" (include "nomad.elastic.entriesIndex" .)
 }}
+{{- with include "nomad.elastic.username" . }}
+{{- $_ := set $elastic "username" . }}
+{{- end }}
 {{- $_ := set $computed "elastic" $elastic }}
 
-{{- $logstashHost := .Values.nomad.infrastructure.logstash.host }}
+{{- $logstashHost := include "nomad.serviceHost" (dict "root" . "service" "logstash") }}
 {{- if not $logstashHost }}
 {{- $logstashHost = printf "%s-logstash" .Release.Name }}
 {{- end }}

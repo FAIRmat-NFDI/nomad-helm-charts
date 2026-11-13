@@ -84,6 +84,7 @@ spec:
             {{- end }}
           env:
             {{- include "nomad.storageTemporalEnv" . | nindent 12 }}
+            {{- include "nomad.elasticAuthEnv" . | nindent 12 }}
             - name: MPLCONFIGDIR
               value: /tmp/matplotlib
             - name: NOMAD_CONFIG
@@ -95,29 +96,40 @@ spec:
             - name: NOMAD_LOGSTASH_LEVEL
               value: "{{ $config.logging.worker.logstash_loglevel }}"
 
-            {{- if .Values.nomad.secrets.api.secretName }}
+            {{- if or .Values.nomad.secrets.api.existingSecret .Values.nomad.secrets.api.value .Values.nomad.secrets.api.autoGenerate }}
             - name: NOMAD_SERVICES_API_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.nomad.secrets.api.secretName }}
-                  key: password
+                  name: {{ include "nomad.secretName.api" . }}
+                  key: {{ .Values.nomad.secrets.api.key }}
             {{- end }}
-            {{- if .Values.nomad.secrets.keycloak.clientSecretName }}
+            {{- if or .Values.nomad.secrets.keycloak.clientSecret.existingSecret .Values.nomad.secrets.keycloak.clientSecret.value }}
             - name: NOMAD_KEYCLOAK_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.nomad.secrets.keycloak.clientSecretName }}
-                  key: password
+                  name: {{ include "nomad.secretName.keycloakClient" . }}
+                  key: {{ .Values.nomad.secrets.keycloak.clientSecret.key }}
             {{- end }}
-            {{- if .Values.nomad.secrets.keycloak.passwordSecretName }}
+            {{- if or .Values.nomad.secrets.keycloak.password.existingSecret .Values.nomad.secrets.keycloak.password.value }}
             - name: NOMAD_KEYCLOAK_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.nomad.secrets.keycloak.passwordSecretName }}
-                  key: password
+                  name: {{ include "nomad.secretName.keycloakPassword" . }}
+                  key: {{ .Values.nomad.secrets.keycloak.password.key }}
             {{- end }}
           # Liveness and readiness probes check the Python Temporal worker's HTTP health server.
           command: ["python", "-m", "nomad.cli", "admin", "run", "action-gpu-worker"]
+          {{- with .Values.nomad.gpuworker.startupProbe }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: {{ .initialDelaySeconds | default 10 }}
+            periodSeconds: {{ .periodSeconds | default 10 }}
+            timeoutSeconds: {{ .timeoutSeconds | default 5 }}
+            failureThreshold: {{ .failureThreshold | default 30 }}
+            successThreshold: 1
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /health

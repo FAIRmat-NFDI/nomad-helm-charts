@@ -181,14 +181,6 @@ nomad:
       limits:
         memory: "4Gi"
 
-  infrastructure:
-    mongo:
-      host: ""
-    elastic:
-      host: ""
-    logstash:
-      host: ""
-
   secrets:
     api:
       existingSecret: ""

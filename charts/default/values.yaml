@@ -55,21 +55,31 @@ nomad:
       s3SecretAccessKeyKey: secret-key
 
     mongo:
+      # Defaults to {{ .Release.Name }}-mongodb (the bundled MongoDB) if empty.
+      host: ""
       db_name: nomad_oasis
       port: 27017
 
     elastic:
+      # Defaults to {{ .Release.Name }}-elasticsearch (the bundled ES9) if empty.
+      # Set it to use an external cluster.
+      host: ""
       # Elasticsearch major version NOMAD talks to ("7" or "9"). The bundled
       # Elasticsearch is 9; set "7" only for an external ES7 cluster.
       version: "9"
       scheme: http
       port: 9200
+      # Basic-auth user for a secured Elasticsearch. Defaults to "elastic" when
+      # nomad.secrets.elastic.existingSecret is set; the password comes from that secret.
+      username: ""
       timeout: 60
       bulk_timeout: 600
       bulk_size: 1000
 
     logstash:
       enabled: false
+      # Defaults to {{ .Release.Name }}-logstash if empty.
+      host: ""
       tcp_port: 5000
 
     temporal:
@@ -155,7 +165,12 @@ nomad:
 
     datacite:
       enabled: false
+      # DataCite REST API. Use https://api.datacite.org for production DOIs.
+      mds_host: "https://api.test.datacite.org"
       prefix: "10.17172"
+      # Path below the site root that dataset DOIs resolve to.
+      dataset_path: "/datasets/doi"
+      # Credentials: nomad.secrets.datacite (keys "user" and "password").
 
     north:
       enabled: false
@@ -259,26 +274,18 @@ nomad:
 
   imagePullSecrets: []
 
-  infrastructure:
-    # MongoDB settings (host defaults to {{ .Release.Name }}-mongodb if empty)
-    mongo:
-      host: ""
-
-    # Elasticsearch settings (host defaults to {{ .Release.Name }}-elasticsearch,
-    # the bundled ES9, if empty). Set it to use an external cluster.
-    elastic:
-      host: ""
-
-    # Logstash settings
-    logstash:
-      host: ""
-
   secrets:
     temporal:
       oidc:
         # JSON object, e.g. {"client_secret":"..."}; merged with config.temporal.oidc.
         existingSecret: ""
         key: oidc
+
+    # Elasticsearch password (basic auth, user from nomad.config.elastic.username).
+    # The key default matches the ECK secret <cluster>-es-elastic-user.
+    elastic:
+      existingSecret: ""
+      key: "elastic"
 
     # API secret for cryptographic operations
     api:
@@ -538,18 +545,24 @@ nomad:
     affinity: {}
     podAnnotations: {}
     podLabels: {}
+    # See nomad.cpuworker.startupProbe.
+    startupProbe:
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 30
     livenessProbe:
       failureThreshold: 3
-      initialDelaySeconds: 5
-      periodSeconds: 5
+      initialDelaySeconds: 0
+      periodSeconds: 30
       successThreshold: 1
-      timeoutSeconds: 1
+      timeoutSeconds: 10
     readinessProbe:
       failureThreshold: 3
-      initialDelaySeconds: 5
-      periodSeconds: 5
+      initialDelaySeconds: 0
+      periodSeconds: 10
       successThreshold: 1
-      timeoutSeconds: 1
+      timeoutSeconds: 5
 
   cpuworker:
     terminationGracePeriodSeconds: 300
@@ -570,18 +583,29 @@ nomad:
     affinity: {}
     podAnnotations: {}
     podLabels: {}
+    # The worker opens its /health endpoint only after importing parsers and
+    # connecting to MongoDB and Temporal, which can take minutes. The startupProbe
+    # allows up to ~5 min for that; liveness/readiness only start once it passes.
+    # Without it, liveness kills the worker during startup and, with the 300s
+    # grace period, the pod cycles every ~5 min. Set to null/{} to disable.
+    startupProbe:
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 30
+    # Activities run in the same process as /health; allow for a busy worker.
     livenessProbe:
       failureThreshold: 3
-      initialDelaySeconds: 5
-      periodSeconds: 5
+      initialDelaySeconds: 0
+      periodSeconds: 30
       successThreshold: 1
-      timeoutSeconds: 1
+      timeoutSeconds: 10
     readinessProbe:
       failureThreshold: 3
-      initialDelaySeconds: 5
-      periodSeconds: 5
+      initialDelaySeconds: 0
+      periodSeconds: 10
       successThreshold: 1
-      timeoutSeconds: 1
+      timeoutSeconds: 5
 
   # `helm test <release>` end-to-end smoke test. Verifies that the core services
   # work together, beyond pods merely being "Ready": it logs in (Keycloak),

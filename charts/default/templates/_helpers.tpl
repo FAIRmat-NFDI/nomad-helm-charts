@@ -248,14 +248,24 @@ spec:
 
 {{/*
 Elasticsearch. The chart bundles a single-node Elasticsearch 9 StatefulSet
-(<release>-elasticsearch); nomad.infrastructure.elastic.host points NOMAD elsewhere.
+(<release>-elasticsearch); nomad.config.elastic.host points NOMAD elsewhere.
 */}}
 {{- define "nomad.elastic.serviceName" -}}
 {{- printf "%s-elasticsearch" .Release.Name -}}
 {{- end }}
 
+{{/*
+Host of an external service (mongo, elastic, logstash): nomad.config.<service>.host,
+else the deprecated nomad.infrastructure.<service>.host (chart <= 2.0), else "".
+Usage: include "nomad.serviceHost" (dict "root" . "service" "mongo")
+*/}}
+{{- define "nomad.serviceHost" -}}
+{{- $config := index .root.Values.nomad.config .service | default dict -}}
+{{- $config.host | default (dig "infrastructure" .service "host" "" .root.Values.nomad) -}}
+{{- end }}
+
 {{- define "nomad.elastic.host" -}}
-{{- .Values.nomad.infrastructure.elastic.host | default (include "nomad.elastic.serviceName" .) -}}
+{{- include "nomad.serviceHost" (dict "root" . "service" "elastic") | default (include "nomad.elastic.serviceName" .) -}}
 {{- end }}
 
 {{- define "nomad.elastic.version" -}}
@@ -297,6 +307,31 @@ check). Writes /proc directly so it works on images without the sysctl binary.
 
 
 {{/* Credentials shared by the API and all Temporal worker types. */}}
+{{/*
+Elasticsearch basic auth. NOMAD only authenticates when both username and
+password are set, so the username defaults to "elastic" once a password secret
+is configured. The password is passed as NOMAD_ELASTIC_PASSWORD.
+*/}}
+{{- define "nomad.elastic.username" -}}
+{{- if .Values.nomad.config.elastic.username -}}
+{{- .Values.nomad.config.elastic.username -}}
+{{- else if .Values.nomad.secrets.elastic.existingSecret -}}
+elastic
+{{- end -}}
+{{- end }}
+
+{{- define "nomad.elasticAuthEnv" -}}
+{{- with .Values.nomad.secrets.elastic }}
+{{- if .existingSecret }}
+- name: NOMAD_ELASTIC_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ .existingSecret | quote }}
+      key: {{ .key | default "elastic" | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{- define "nomad.storageTemporalEnv" -}}
 {{- $fs := .Values.nomad.config.fs -}}
 {{- if $fs.s3Secret }}
