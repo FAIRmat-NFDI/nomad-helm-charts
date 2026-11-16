@@ -1,0 +1,38 @@
+{{- if and .Values.nomad.enabled .Values.nomad.monitoring.serviceMonitor.enabled .Values.nomad.config.telemetry.metrics.api_prometheus_enabled -}}
+{{- $root := . -}}
+{{- $components := list "app" -}}
+{{- if .Values.nomad.app.heavy.enabled -}}
+{{- $components = append $components "app-heavy" -}}
+{{- end -}}
+{{- range $component := $components }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "nomad.fullname" $root }}-{{ $component }}-metrics
+  {{- with $root.Values.nomad.monitoring.serviceMonitor.namespace }}
+  namespace: {{ . }}
+  {{- end }}
+  labels:
+    {{- include "nomad.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+    {{- with $root.Values.nomad.monitoring.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ $root.Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "nomad.selectorLabels" $root | nindent 6 }}
+      app.kubernetes.io/component: {{ $component }}
+  endpoints:
+    - port: http
+      path: {{ include "nomad.proxy.backendPrefix" $root }}{{ $root.Values.nomad.monitoring.serviceMonitor.path | default "/metrics" }}
+      interval: {{ $root.Values.nomad.monitoring.serviceMonitor.interval }}
+      {{- with $root.Values.nomad.monitoring.serviceMonitor.scrapeTimeout }}
+      scrapeTimeout: {{ . }}
+      {{- end }}
+{{- end }}
+{{- end }}

@@ -274,6 +274,24 @@ nomad:
 
   imagePullSecrets: []
 
+  monitoring:
+    # Prometheus Operator resources are created only when the corresponding
+    # metrics endpoint is enabled in nomad.config.
+    podMonitor:
+      enabled: false
+      namespace: ""
+      interval: 30s
+      path: /metrics
+      scrapeTimeout: ""
+      additionalLabels: {}
+    serviceMonitor:
+      enabled: false
+      namespace: ""
+      interval: 30s
+      path: /metrics
+      scrapeTimeout: ""
+      additionalLabels: {}
+
   secrets:
     temporal:
       oidc:
