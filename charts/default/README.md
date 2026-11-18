@@ -763,7 +763,8 @@ helm uninstall nomad-oasis
 ## Prometheus monitoring
 
 The chart can create Prometheus Operator monitors for the app services and
-Temporal worker pods. Enable the corresponding metrics endpoints and monitors:
+Temporal worker pods. Install the `ServiceMonitor` and `PodMonitor` CRDs for
+the monitor types you enable, then enable their corresponding metrics endpoints:
 
 ```yaml
 nomad:
@@ -788,9 +789,18 @@ nomad:
 ```
 
 The app monitor uses `nomad.config.services.api_base_path` plus `/metrics`.
-The pod monitors use the workers' named `metrics` port. Set `namespace` to the
-namespace where Prometheus selects monitors, and `additionalLabels` to labels
-required by its monitor selector. Both monitor types are disabled by default.
+The proxy returns HTTP 404 for this endpoint. Prometheus scrapes it directly
+through the app Services.
+The pod monitors use the workers' named `metrics` port. The `worker` monitor
+is created even when the worker scales to zero. The `cpuworker` and `gpuworker`
+monitors are created when their component has a positive replica count.
+Set `namespace` to the namespace where Prometheus selects monitors and
+`additionalLabels` to labels required by its monitor selector. Both monitor
+types are disabled by default.
+
+For offline `helm template` rendering, pass `--api-versions
+monitoring.coreos.com/v1/ServiceMonitor` and/or `--api-versions
+monitoring.coreos.com/v1/PodMonitor` for the monitor types you enable.
 
 ## Temporal Workflow Engine
 

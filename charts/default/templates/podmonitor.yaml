@@ -1,34 +1,14 @@
-{{- if and .Values.nomad.enabled .Values.nomad.monitoring.podMonitor.enabled .Values.nomad.config.temporal.prometheus_bind_address.enabled -}}
-{{- $root := . -}}
-{{- range $component := list "worker" "cpuworker" "gpuworker" }}
----
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: {{ include "nomad.fullname" $root }}-{{ $component }}-metrics
-  {{- with $root.Values.nomad.monitoring.podMonitor.namespace }}
-  namespace: {{ . }}
-  {{- end }}
-  labels:
-    {{- include "nomad.labels" $root | nindent 4 }}
-    app.kubernetes.io/component: {{ $component }}
-    {{- with $root.Values.nomad.monitoring.podMonitor.additionalLabels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-spec:
-  namespaceSelector:
-    matchNames:
-      - {{ $root.Release.Namespace }}
-  selector:
-    matchLabels:
-      {{- include "nomad.selectorLabels" $root | nindent 6 }}
-      app.kubernetes.io/component: {{ $component }}
-  podMetricsEndpoints:
-    - port: metrics
-      path: {{ $root.Values.nomad.monitoring.podMonitor.path }}
-      interval: {{ $root.Values.nomad.monitoring.podMonitor.interval }}
-      {{- with $root.Values.nomad.monitoring.podMonitor.scrapeTimeout }}
-      scrapeTimeout: {{ . }}
-      {{- end }}
-{{- end }}
+{{- if and .Values.nomad.enabled .Values.nomad.monitoring.podMonitor.enabled -}}
+{{- if not .Values.nomad.config.temporal.prometheus_bind_address.enabled -}}
+{{- fail "nomad.monitoring.podMonitor.enabled requires nomad.config.temporal.prometheus_bind_address.enabled to be true" -}}
+{{- end -}}
+{{- $components := list "worker" -}}
+{{- range $component := list "cpuworker" "gpuworker" -}}
+{{- if gt (int (index $.Values.nomad $component).replicaCount) 0 -}}
+{{- $components = append $components $component -}}
+{{- end -}}
+{{- end -}}
+{{- $settings := .Values.nomad.monitoring.podMonitor -}}
+{{- include "nomad.monitor" (dict "root" . "settings" $settings
+  "kind" "PodMonitor" "components" $components "endpointsKey" "podMetricsEndpoints" "port" "metrics" "path" $settings.path) -}}
 {{- end }}

@@ -158,6 +158,45 @@ return 302 {{ index . .default }};
 {{- $warnings | toJson }}
 {{- end }}
 
+{{/* Render a Prometheus Operator monitor for each selected component. */}}
+{{- define "nomad.monitor" -}}
+{{- $apiVersion := "monitoring.coreos.com/v1" -}}
+{{- $api := printf "%s/%s" $apiVersion .kind -}}
+{{- if not (.root.Capabilities.APIVersions.Has $api) -}}
+{{- fail (printf "Install the Prometheus Operator %s CRD before enabling this monitor. For offline rendering, pass --api-versions %s." .kind $api) -}}
+{{- end -}}
+{{- $chartLabels := include "nomad.labels" .root | fromYaml -}}
+{{- $additionalLabels := .settings.additionalLabels | default dict -}}
+{{- range $component := .components }}
+{{- $labels := mergeOverwrite (dict) $chartLabels (dict "app.kubernetes.io/component" $component) $additionalLabels }}
+---
+apiVersion: {{ $apiVersion }}
+kind: {{ $.kind }}
+metadata:
+  name: {{ include "nomad.fullname" $.root }}-{{ $component }}-metrics
+  {{- with $.settings.namespace }}
+  namespace: {{ . }}
+  {{- end }}
+  labels:
+    {{- toYaml $labels | nindent 4 }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ $.root.Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "nomad.selectorLabels" $.root | nindent 6 }}
+      app.kubernetes.io/component: {{ $component }}
+  {{ $.endpointsKey }}:
+    - port: {{ $.port }}
+      path: {{ $.path }}
+      interval: {{ $.settings.interval }}
+      {{- with $.settings.scrapeTimeout }}
+      scrapeTimeout: {{ . }}
+      {{- end }}
+{{- end }}
+{{- end }}
+
 {{/*
 Generate a volume definition for a data volume.
 Supports hostPath (default) or PVC when persistence is enabled.

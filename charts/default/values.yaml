@@ -275,8 +275,8 @@ nomad:
   imagePullSecrets: []
 
   monitoring:
-    # Prometheus Operator resources are created only when the corresponding
-    # metrics endpoint is enabled in nomad.config.
+    # Enabling a monitor requires its Prometheus Operator CRD and the
+    # corresponding metrics endpoint in nomad.config.
     podMonitor:
       enabled: false
       namespace: ""
@@ -288,7 +288,6 @@ nomad:
       enabled: false
       namespace: ""
       interval: 30s
-      path: /metrics
       scrapeTimeout: ""
       additionalLabels: {}
 
