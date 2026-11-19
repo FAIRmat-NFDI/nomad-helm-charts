@@ -1,6 +1,9 @@
 name: Release Charts
 
 on:
+  push:
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
 
 jobs:
@@ -8,14 +11,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pages: write
-      id-token: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Verify tag is on main and matches Chart.yaml version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
+            echo "::error::Releases must run from a vX.Y.Z tag, got $GITHUB_REF_TYPE '$GITHUB_REF_NAME'"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME points to a commit that is not on main"
+            exit 1
+          fi
+          chart_version=$(yq '.version' charts/default/Chart.yaml)
+          if [[ "${GITHUB_REF_NAME#v}" != "$chart_version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match Chart.yaml version $chart_version"
+            exit 1
+          fi
 
       - name: Configure Git
         run: |
@@ -50,4 +67,5 @@ jobs:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
         with:
           charts_dir: charts
+          config: .github/cr.yaml
           skip_existing: true
