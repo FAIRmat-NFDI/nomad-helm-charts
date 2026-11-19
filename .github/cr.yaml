@@ -1,8 +1,13 @@
 # chart-releaser configuration
 # https://github.com/helm/chart-releaser#configuration
 
-# Generate release notes from chart's CHANGELOG.md if present
+# Generate release notes with GitHub's generator (categories in .github/release.yaml)
 generate-release-notes: true
+
+# Name releases after the pushed vX.Y.Z tag instead of the default
+# "<chart>-<version>", so each version has a single tag. This also sets the
+# download URLs in index.yaml. Only works while the repo has a single chart.
+release-name-template: "v{{ .Version }}"
 
 # Package charts with dependencies included
 package-path: .cr-release-packages
