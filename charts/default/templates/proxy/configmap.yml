@@ -118,6 +118,13 @@ data:
           application/json;
       {{- end }}
 
+      {{- if $config.telemetry.metrics.api_prometheus_enabled }}
+      # Prometheus scrapes the app Services directly.
+      location ~ ^{{ $backendPrefix | regexQuoteMeta }}/metrics/?$ {
+        return 404;
+      }
+      {{- end }}
+
       {{- if or (not $split) (ne $publicPath "/") }}
       location / {
         proxy_pass {{ $app }};
@@ -448,7 +455,7 @@ data:
       # /api/v1 regex locations below. A prefix location is not enough: those
       # regexes also match the old path and would bypass this rewrite for
       # uploads and downloads.
-      location ~ ^{{ $legacyPath }}/(?:api|north|optimade|dcat|h5grove|dashboards|docs|metrics|alive|temporal)(?:/|$) {
+      location ~ ^{{ $legacyPath }}/(?:api|north|optimade|dcat|h5grove|dashboards|docs|alive|temporal)(?:/|$) {
         rewrite ^{{ $legacyPath }}/(.*)$ {{ $backendPrefix }}/$1 last;
       }
 

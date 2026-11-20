@@ -274,6 +274,23 @@ nomad:
 
   imagePullSecrets: []
 
+  monitoring:
+    # Enabling a monitor requires its Prometheus Operator CRD and the
+    # corresponding metrics endpoint in nomad.config.
+    podMonitor:
+      enabled: false
+      namespace: ""
+      interval: 30s
+      path: /metrics
+      scrapeTimeout: ""
+      additionalLabels: {}
+    serviceMonitor:
+      enabled: false
+      namespace: ""
+      interval: 30s
+      scrapeTimeout: ""
+      additionalLabels: {}
+
   secrets:
     temporal:
       oidc:

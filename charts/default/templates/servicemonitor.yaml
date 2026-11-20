@@ -1,0 +1,12 @@
+{{- if and .Values.nomad.enabled .Values.nomad.monitoring.serviceMonitor.enabled -}}
+{{- if not .Values.nomad.config.telemetry.metrics.api_prometheus_enabled -}}
+{{- fail "nomad.monitoring.serviceMonitor.enabled requires nomad.config.telemetry.metrics.api_prometheus_enabled to be true" -}}
+{{- end -}}
+{{- $components := list "app" -}}
+{{- if .Values.nomad.app.heavy.enabled -}}
+{{- $components = append $components "app-heavy" -}}
+{{- end -}}
+{{- $path := printf "%s/metrics" (include "nomad.proxy.backendPrefix" .) -}}
+{{- include "nomad.monitor" (dict "root" . "settings" .Values.nomad.monitoring.serviceMonitor
+  "kind" "ServiceMonitor" "components" $components "endpointsKey" "endpoints" "port" "http" "path" $path) -}}
+{{- end }}

@@ -760,6 +760,48 @@ helm uninstall nomad-oasis
 | [`custom-values/kind.yaml`](custom-values/kind.yaml) | Kind local development with all services enabled |
 | [`custom-values/aws.yaml`](custom-values/aws.yaml) | AWS EKS with ALB ingress and EFS/EBS storage |
 
+## Prometheus monitoring
+
+The chart can create Prometheus Operator monitors for the app services and
+Temporal worker pods. Install the `ServiceMonitor` and `PodMonitor` CRDs for
+the monitor types you enable, then enable their corresponding metrics endpoints:
+
+```yaml
+nomad:
+  config:
+    telemetry:
+      metrics:
+        api_prometheus_enabled: true
+    temporal:
+      prometheus_bind_address:
+        enabled: true
+  monitoring:
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+      additionalLabels:
+        release: prometheus-stack
+    podMonitor:
+      enabled: true
+      namespace: monitoring
+      additionalLabels:
+        release: prometheus-stack
+```
+
+The app monitor uses `nomad.config.services.api_base_path` plus `/metrics`.
+The proxy returns HTTP 404 for this endpoint. Prometheus scrapes it directly
+through the app Services.
+The pod monitors use the workers' named `metrics` port. The `worker` monitor
+is created even when the worker scales to zero. The `cpuworker` and `gpuworker`
+monitors are created when their component has a positive replica count.
+Set `namespace` to the namespace where Prometheus selects monitors and
+`additionalLabels` to labels required by its monitor selector. Both monitor
+types are disabled by default.
+
+For offline `helm template` rendering, pass `--api-versions
+monitoring.coreos.com/v1/ServiceMonitor` and/or `--api-versions
+monitoring.coreos.com/v1/PodMonitor` for the monitor types you enable.
+
 ## Temporal Workflow Engine
 
 The chart includes Temporal for workflow orchestration. Key configuration:

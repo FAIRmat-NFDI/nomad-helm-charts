@@ -1,0 +1,14 @@
+{{- if and .Values.nomad.enabled .Values.nomad.monitoring.podMonitor.enabled -}}
+{{- if not .Values.nomad.config.temporal.prometheus_bind_address.enabled -}}
+{{- fail "nomad.monitoring.podMonitor.enabled requires nomad.config.temporal.prometheus_bind_address.enabled to be true" -}}
+{{- end -}}
+{{- $components := list "worker" -}}
+{{- range $component := list "cpuworker" "gpuworker" -}}
+{{- if gt (int (index $.Values.nomad $component).replicaCount) 0 -}}
+{{- $components = append $components $component -}}
+{{- end -}}
+{{- end -}}
+{{- $settings := .Values.nomad.monitoring.podMonitor -}}
+{{- include "nomad.monitor" (dict "root" . "settings" $settings
+  "kind" "PodMonitor" "components" $components "endpointsKey" "podMetricsEndpoints" "port" "metrics" "path" $settings.path) -}}
+{{- end }}
