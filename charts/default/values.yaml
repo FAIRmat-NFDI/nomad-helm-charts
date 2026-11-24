@@ -175,7 +175,7 @@ nomad:
         # Identifier of the publisher, e.g. "https://ror.org/04z8jg394".
         publisher_identifier: null
         # Scheme of the publisher identifier, e.g. "ROR" or "re3data".
-        publisher identrifier_scheme: null
+        publisher_identifier_scheme: null
         # URI of the publisher identifier scheme, e.g. "https://ror.org/".
         scheme_uri: null
       # Path below the site root that dataset DOIs resolve to.
