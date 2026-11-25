@@ -189,6 +189,14 @@ data:
 {{- end }}
 
 {{- if $config.datacite }}
+{{- $datacite := $config.datacite }}
+{{- if $datacite.enabled }}
+{{- range $key := list "name" "publisher_identifier" "publisher_identifier_scheme" "scheme_uri"}}
+{{- if not (get ($datacite.publisher | default dict) $key) }}
+{{- fail (printf "nomad.config.datacite.publisher.%s is required when datacite.enabled is true" $key) }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- $_ := set $computed "datacite" $config.datacite }}
 {{- end }}
 
