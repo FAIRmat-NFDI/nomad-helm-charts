@@ -56,9 +56,14 @@ nomad:
 
     mongo:
       # Defaults to {{ .Release.Name }}-mongodb (the bundled MongoDB) if empty.
+      # A host without a scheme gets "mongodb://"; a full URI (mongodb+srv://...,
+      # ?authSource=...&tls=true) is used as is.
       host: ""
       db_name: nomad_oasis
       port: 27017
+      # User for an external MongoDB; the password comes from
+      # nomad.secrets.mongo. The bundled MongoDB with auth uses "root".
+      username: ""
 
     elastic:
       # Defaults to {{ .Release.Name }}-elasticsearch (the bundled ES9) if empty.
@@ -313,6 +318,13 @@ nomad:
     elastic:
       existingSecret: ""
       key: "elastic"
+
+    # External MongoDB password (user from nomad.config.mongo.username), passed
+    # to NOMAD as NOMAD_MONGO_PASSWORD. Not needed for the bundled MongoDB, whose
+    # root password secret (mongodb.auth) is used automatically.
+    mongo:
+      existingSecret: ""
+      key: "password"
 
     # API secret for cryptographic operations
     api:
@@ -825,6 +837,10 @@ mongodb:
     enabled: true
     size: 8Gi
     storageClass: ""
+    # helm.sh/resource-policy on the data PVC. "keep" leaves it (and the data)
+    # in place on helm uninstall or when mongodb.enabled is switched off; delete
+    # it by hand when no longer needed. Empty lets Helm delete it.
+    resourcePolicy: keep
   resources:
     requests:
       memory: "512Mi"

@@ -122,6 +122,7 @@ spec:
           env:
             {{- include "nomad.storageTemporalEnv" . | nindent 12 }}
             {{- include "nomad.elasticAuthEnv" . | nindent 12 }}
+            {{- include "nomad.mongoAuthEnv" . | nindent 12 }}
             - name: MPLCONFIGDIR
               value: /tmp/matplotlib
             - name: NOMAD_CONFIG
