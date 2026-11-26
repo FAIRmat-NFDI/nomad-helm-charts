@@ -1,0 +1,47 @@
+{{- /*
+Renders nothing; fails the install/upgrade when a subchart address still holds
+its shipped default, which assumes the release is named "nomad-oasis". The
+temporal and jupyterhub subcharts use these strings verbatim (no tpl), so the
+parent chart cannot derive them from .Release.Name; with any other release name
+they point at Services that do not exist and fail only at runtime.
+*/ -}}
+{{- $fullName := include "nomad.fullname" . -}}
+{{- $checks := list -}}
+
+{{- if .Values.temporal.enabled }}
+{{- $server := .Values.temporal.server.config -}}
+{{- $frontend := printf "%s-temporal-frontend:7233" .Release.Name -}}
+{{- $checks = append $checks (list "temporal.server.config.publicClient.hostPort" (dig "publicClient" "hostPort" "" $server) "nomad-oasis-temporal-frontend:7233" $frontend) -}}
+{{- if .Values.postgresql.enabled }}
+{{- $postgres := printf "%s-postgresql" .Release.Name -}}
+{{- range $store := list "default" "visibility" }}
+{{- $checks = append $checks (list (printf "temporal.server.config.persistence.%s.sql.host" $store) (dig "persistence" $store "sql" "host" "" $server) "nomad-oasis-postgresql" $postgres) -}}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- if .Values.jupyterhub.enabled }}
+{{- $apiUrl := printf "http://%s-app:8000%s/api/v1" $fullName (include "nomad.proxy.backendPrefix" .) -}}
+{{- /* z2jh accepts extraEnv as a map or as a list of {name, value} */ -}}
+{{- $hubEnv := dig "hub" "extraEnv" (dict) .Values.jupyterhub -}}
+{{- $hubApiUrl := "" -}}
+{{- if kindIs "map" $hubEnv }}
+{{- $hubApiUrl = get $hubEnv "NOMAD_API_URL" -}}
+{{- else }}
+{{- range $hubEnv }}
+{{- if eq (toString (get . "name")) "NOMAD_API_URL" }}{{- $hubApiUrl = get . "value" -}}{{- end }}
+{{- end }}
+{{- end }}
+{{- $checks = append $checks (list "jupyterhub.hub.extraEnv.NOMAD_API_URL" $hubApiUrl "http://nomad-oasis-app:8000/backend/api/v1" $apiUrl) -}}
+{{- end }}
+
+{{- $wrong := list -}}
+{{- range $checks }}
+{{- $key := index . 0 -}}{{- $actual := index . 1 -}}{{- $shipped := index . 2 -}}{{- $expected := index . 3 -}}
+{{- if and (eq (toString $actual) $shipped) (ne $shipped $expected) }}
+{{- $wrong = append $wrong (printf "  --set %s=%s" $key $expected) -}}
+{{- end }}
+{{- end }}
+{{- if $wrong }}
+{{- fail (printf "\nThese values still hold the defaults for a release named \"nomad-oasis\", but this release is %q. Set them for this release (or the equivalent in your values file):\n%s" .Release.Name (join "\n" $wrong)) }}
+{{- end }}

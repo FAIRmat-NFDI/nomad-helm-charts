@@ -371,6 +371,42 @@ elastic
 {{- end }}
 {{- end }}
 
+{{/*
+MongoDB credentials. The password never goes into nomad.yaml (a ConfigMap); NOMAD
+reads it from NOMAD_MONGO_PASSWORD, taken from nomad.secrets.mongo.existingSecret
+(external MongoDB) or, for the bundled MongoDB with auth, from its root password
+Secret (mongodb.auth.existingSecret, else <release>-mongodb). NOMAD authenticates
+only when both username and password are set; without authSource in the host URI
+it authenticates against the admin database.
+*/}}
+{{- define "nomad.mongo.secretName" -}}
+{{- if .Values.nomad.secrets.mongo.existingSecret -}}
+{{- .Values.nomad.secrets.mongo.existingSecret -}}
+{{- else if and .Values.mongodb.enabled .Values.mongodb.auth.enabled -}}
+{{- .Values.mongodb.auth.existingSecret | default (printf "%s-mongodb" .Release.Name) -}}
+{{- end -}}
+{{- end }}
+
+{{- define "nomad.mongo.username" -}}
+{{- if .Values.nomad.config.mongo.username -}}
+{{- .Values.nomad.config.mongo.username -}}
+{{- else if .Values.nomad.secrets.mongo.existingSecret -}}
+{{- fail "nomad.config.mongo.username must be set when nomad.secrets.mongo.existingSecret is set" -}}
+{{- else if and .Values.mongodb.enabled .Values.mongodb.auth.enabled -}}
+root
+{{- end -}}
+{{- end }}
+
+{{- define "nomad.mongoAuthEnv" -}}
+{{- with include "nomad.mongo.secretName" . }}
+- name: NOMAD_MONGO_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ . | quote }}
+      key: {{ ternary ($.Values.nomad.secrets.mongo.key | default "password") "mongodb-root-password" (not (empty $.Values.nomad.secrets.mongo.existingSecret)) | quote }}
+{{- end }}
+{{- end }}
+
 {{- define "nomad.storageTemporalEnv" -}}
 {{- $fs := .Values.nomad.config.fs -}}
 {{- if $fs.s3Secret }}

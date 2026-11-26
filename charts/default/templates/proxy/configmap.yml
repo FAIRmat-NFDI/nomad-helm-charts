@@ -10,6 +10,7 @@
 {{- $publicPath := include "nomad.proxy.publicPath" . -}}
 {{- $publicPrefix := include "nomad.proxy.publicPrefix" . -}}
 {{- $split := ne $backendPath $publicPath -}}
+{{- $northHub := and $config.north.enabled .Values.jupyterhub.enabled -}}
 {{- $guiDefault := $config.gui.default | default "select" -}}
 {{- $docsUrl := trimSuffix "/" (.Values.nomad.proxy.docsUrl | default "") -}}
 {{- if not (has $guiDefault (list "v1" "v2" "select")) }}
@@ -33,7 +34,7 @@ metadata:
     app.kubernetes.io/component: proxy
 data:
   nginx.conf: |
-    {{- if $config.north.enabled }}
+    {{- if $northHub }}
     # top-level http config for websocket headers
     # If Upgrade is defined, Connection = upgrade
     # If Upgrade is empty, Connection = close
@@ -671,7 +672,7 @@ data:
       }
       {{- end }}
 
-      {{- if $config.north.enabled }}
+      {{- if $northHub }}
       location = {{ $backendPrefix }}/north {
           return 302 {{ $backendPrefix }}/north/$is_args$args;
       }

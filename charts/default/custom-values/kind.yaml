@@ -127,7 +127,6 @@ nomad:
 
     north:
       enabled: true
-      hub_service_api_token: secret-token
       hub_host: nomad-oasis-jupyterhub-hub
       hub_port: 8081
 

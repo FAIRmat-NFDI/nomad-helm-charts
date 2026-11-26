@@ -6,6 +6,10 @@ metadata:
   labels:
     {{- include "nomad.labels" . | nindent 4 }}
     app.kubernetes.io/component: mongodb
+  {{- with .Values.mongodb.persistence.resourcePolicy }}
+  annotations:
+    helm.sh/resource-policy: {{ . | quote }}
+  {{- end }}
 spec:
   accessModes:
     - ReadWriteOnce

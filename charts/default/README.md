@@ -225,6 +225,47 @@ mongodb:
 > [!WARNING]
 > Disabling MongoDB authentication is not recommended for production. Even within a Kubernetes cluster, any pod in the same namespace can access an unauthenticated MongoDB instance.
 
+NOMAD connects as `root`. The password is not written into `nomad.yaml`; the app and
+every worker read it from the MongoDB secret as `NOMAD_MONGO_PASSWORD`.
+
+The data PVC (`<release>-mongodb-data`) carries `helm.sh/resource-policy: keep`, so
+`helm uninstall` or switching `mongodb.enabled` off leaves it and its data in place.
+Delete it with `kubectl delete pvc` when no longer needed, or set
+`mongodb.persistence.resourcePolicy: ""` to let Helm delete it. Helm reads the
+annotation from the live PVC, so a release installed with an older chart needs one
+`helm upgrade` with this chart before the PVC is protected.
+
+**External MongoDB.** Disable the bundled one and point NOMAD at yours. The password
+comes from a Secret you create in the release namespace:
+
+```yaml
+mongodb:
+  enabled: false
+nomad:
+  config:
+    mongo:
+      host: mongo.example.org   # or a full URI: mongodb+srv://cluster0.example.net/?authSource=admin&tls=true
+      port: 27017
+      db_name: nomad_oasis
+      username: nomad
+  secrets:
+    mongo:
+      existingSecret: nomad-mongo   # kubectl create secret generic nomad-mongo --from-literal=password=...
+      key: password
+```
+
+Without `authSource` in the host, NOMAD authenticates against the `admin` database.
+
+Without these settings (and with `mongodb.auth.enabled`, the default), an external
+MongoDB is accessed as `root` as in earlier chart versions: with
+`mongodb.auth.rootPassword` or, if that is empty, the password of an existing
+`<release>-mongodb` Secret (key `mongodb-root-password`), written into the host URI in
+`nomad.yaml`. Prefer the settings above, which keep the password out of the ConfigMap;
+the Secret lookup also needs cluster access, so `helm template` renders no credentials.
+
+Switching an existing release to an external MongoDB does not move its data; copy it
+first (for example with `mongodump`/`mongorestore`).
+
 ### Elasticsearch (`elasticsearch`)
 
 The chart runs a single-node **Elasticsearch 9** (`docker.elastic.co/elasticsearch/elasticsearch:9.5.0`)
@@ -751,6 +792,9 @@ curl -I http://localhost:8080/
 helm uninstall nomad-oasis
 ```
 
+The MongoDB data PVC is kept (see [MongoDB](#mongodb-mongodb)), as are the volumes
+created by the Elasticsearch and PostgreSQL StatefulSets.
+
 ## Values Files
 
 | File | Description |
@@ -825,6 +869,36 @@ temporal:
 postgresql:
   enabled: true  # Required for Temporal persistence
 ```
+
+**Release names other than `nomad-oasis`.** The Temporal and JupyterHub subcharts take
+these addresses verbatim, so their defaults assume the release is called `nomad-oasis`.
+Any other release name must override them; the install fails with the exact `--set`
+lines when one still holds the `nomad-oasis` default:
+
+```yaml
+temporal:
+  server:
+    config:
+      publicClient:
+        hostPort: "<release>-temporal-frontend:7233"
+      persistence:
+        default:
+          sql:
+            host: "<release>-postgresql"
+        visibility:
+          sql:
+            host: "<release>-postgresql"
+jupyterhub:   # only when jupyterhub.enabled
+  hub:
+    extraEnv:
+      NOMAD_API_URL: http://<release>-nomad-app:8000/backend/api/v1  # <release>-app if the release name contains "nomad"
+```
+
+**External PostgreSQL.** Set `postgresql.enabled: false`, point both
+`temporal.server.config.persistence.{default,visibility}.sql` blocks at your server
+(`host`, `port`, `user`, and `existingSecret` for the password), and create the
+`temporal` and `temporal_visibility` databases yourself. The Temporal schema jobs
+create the tables.
 
 After installation, you may need to create the default namespace manually:
 ```bash
@@ -1026,13 +1100,20 @@ nomad:
   config:
     north:
       enabled: true
-      hub_service_api_token: "your-secure-token"  # Used for NOMAD-JupyterHub communication
       hub_host: nomad-oasis-jupyterhub-hub        # JupyterHub hub service name
       hub_port: 8081                               # JupyterHub hub service port
       tools:
         options:
           jupyter:
             image: ghcr.io/fairmat-nfdi/nomad-distro-template/jupyter:main
+
+  secrets:
+    north:
+      hubServiceApiToken:
+        # Shared by NOMAD and the hub; the hub reads the same Secret through
+        # jupyterhub.hub.extraEnv.NOMAD_NORTH_HUB_SERVICE_API_TOKEN (default:
+        # nomad-hub-service-api-token, key token).
+        existingSecret: nomad-hub-service-api-token
 
 jupyterhub:
   enabled: true
@@ -1054,9 +1135,11 @@ kubectl create secret generic nomad-hub-service-api-token \
   --from-literal=token=$(openssl rand -hex 32)
 ```
 
+The chart fails to render if NOMAD and the hub would read the token from different Secrets or keys, and names the `--set` flags that align them.
+
 When enabled, the chart will:
 1. Deploy the JupyterHub subchart
-2. Configure nginx proxy to route `/api_base_path/north/` to JupyterHub
+2. Configure nginx proxy to route `/api_base_path/north/` to JupyterHub (only when `jupyterhub.enabled`; with NORTH pointed at a hub outside this release, route it yourself)
 3. Configure OAuth authentication via Keycloak
 
 ### Custom Tools

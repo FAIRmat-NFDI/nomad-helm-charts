@@ -122,6 +122,7 @@ spec:
           env:
             {{- include "nomad.storageTemporalEnv" . | nindent 12 }}
             {{- include "nomad.elasticAuthEnv" . | nindent 12 }}
+            {{- include "nomad.mongoAuthEnv" . | nindent 12 }}
             - name: MPLCONFIGDIR
               value: /tmp/matplotlib
             - name: NOMAD_CONFIG
@@ -172,7 +173,7 @@ spec:
                   name: {{- if .Values.nomad.secrets.datacite.existingSecret }} {{ .Values.nomad.secrets.datacite.existingSecret }}{{- else }} {{ include "nomad.fullname" . }}-datacite-secret{{- end }}
                   key: user
             {{- end }}
-            {{- if and $config.north.enabled (or .Values.nomad.secrets.north.hubServiceApiToken.existingSecret .Values.nomad.secrets.north.hubServiceApiToken.value) }}
+            {{- if $config.north.enabled }}
             - name: NOMAD_NORTH_HUB_SERVICE_API_TOKEN
               valueFrom:
                 secretKeyRef:

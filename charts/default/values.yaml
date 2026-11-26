@@ -56,9 +56,13 @@ nomad:
 
     mongo:
       # Defaults to {{ .Release.Name }}-mongodb (the bundled MongoDB) if empty.
+      # A host without a scheme gets "mongodb://"; a full URI (mongodb+srv://...,
+      # ?authSource=...&tls=true) is used as is.
       host: ""
       db_name: nomad_oasis
       port: 27017
+      # User for an external MongoDB; the password comes from
+      username: ""
 
     elastic:
       # Defaults to {{ .Release.Name }}-elasticsearch (the bundled ES9) if empty.
@@ -186,7 +190,7 @@ nomad:
       enabled: false
       # Use the NORTH API of the refactored hub (hub.image)
       enable_new_hub_api: true
-      hub_service_api_token: secret-token
+      hub_service_api_token: ""
       tools: {}
 
     dashboards:
@@ -314,6 +318,13 @@ nomad:
       existingSecret: ""
       key: "elastic"
 
+    # External MongoDB password (user from nomad.config.mongo.username), passed
+    # to NOMAD as NOMAD_MONGO_PASSWORD. Not needed for the bundled MongoDB, whose
+    # root password secret (mongodb.auth) is used automatically.
+    mongo:
+      existingSecret: ""
+      key: "password"
+
     # API secret for cryptographic operations
     api:
       existingSecret: ""
@@ -345,7 +356,10 @@ nomad:
       key: "password"
       value: ""
 
-    # JupyterHub service API token
+    # JupyterHub service API token, shared by NOMAD and the hub. The hub reads
+    # it via jupyterhub.hub.extraEnv.NOMAD_NORTH_HUB_SERVICE_API_TOKEN, which
+    # must reference the same Secret and key (checked when rendering). Without
+    # existingSecret, the chart creates <fullname>-north-hub-token-secret.
     north:
       hubServiceApiToken:
         existingSecret: ""
@@ -760,6 +774,7 @@ jupyterhub:
     extraEnv:
       # NOMAD API that the spawner gets the tools and mounts from
       NOMAD_API_URL: http://nomad-oasis-app:8000/backend/api/v1
+      # Must be the Secret and key in nomad.secrets.north.hubServiceApiToken
       NOMAD_NORTH_HUB_SERVICE_API_TOKEN:
         valueFrom:
           secretKeyRef:
@@ -825,6 +840,10 @@ mongodb:
     enabled: true
     size: 8Gi
     storageClass: ""
+    # helm.sh/resource-policy on the data PVC. "keep" leaves it (and the data)
+    # in place on helm uninstall or when mongodb.enabled is switched off; delete
+    # it by hand when no longer needed. Empty lets Helm delete it.
+    resourcePolicy: keep
   resources:
     requests:
       memory: "512Mi"
