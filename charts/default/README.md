@@ -255,6 +255,14 @@ nomad:
 ```
 
 Without `authSource` in the host, NOMAD authenticates against the `admin` database.
+
+Without these settings (and with `mongodb.auth.enabled`, the default), an external
+MongoDB is accessed as `root` as in earlier chart versions: with
+`mongodb.auth.rootPassword` or, if that is empty, the password of an existing
+`<release>-mongodb` Secret (key `mongodb-root-password`), written into the host URI in
+`nomad.yaml`. Prefer the settings above, which keep the password out of the ConfigMap;
+the Secret lookup also needs cluster access, so `helm template` renders no credentials.
+
 Switching an existing release to an external MongoDB does not move its data; copy it
 first (for example with `mongodump`/`mongorestore`).
 

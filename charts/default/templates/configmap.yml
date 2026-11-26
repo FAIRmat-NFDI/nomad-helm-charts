@@ -54,6 +54,19 @@ data:
 {{- $_ := set $computed "fs" $fs }}
 
 {{- $mongoHost := include "nomad.serviceHost" (dict "root" . "service" "mongo") | default (printf "%s-mongodb" .Release.Name) }}
+{{- $mongoUser := include "nomad.mongo.username" . }}
+{{- if and (not .Values.mongodb.enabled) .Values.mongodb.auth.enabled (not $mongoUser) (not (contains "://" $mongoHost)) }}
+{{- $mongoPass := .Values.mongodb.auth.rootPassword }}
+{{- if not $mongoPass }}
+{{- $secret := lookup "v1" "Secret" .Release.Namespace (printf "%s-mongodb" .Release.Name) }}
+{{- if $secret }}
+{{- $mongoPass = index $secret.data "mongodb-root-password" | b64dec }}
+{{- end }}
+{{- end }}
+{{- if $mongoPass }}
+{{- $mongoHost = printf "root:%s@%s" $mongoPass $mongoHost }}
+{{- end }}
+{{- end }}
 {{- if not (contains "://" $mongoHost) }}
 {{- $mongoHost = printf "mongodb://%s" $mongoHost }}
 {{- end }}
@@ -63,7 +76,7 @@ data:
     "port" $config.mongo.port
     "db_name" $dbname
 }}
-{{- with include "nomad.mongo.username" . }}
+{{- with $mongoUser }}
 {{- $_ := set $mongo "username" . }}
 {{- end }}
 {{- $_ := set $computed "mongo" $mongo }}

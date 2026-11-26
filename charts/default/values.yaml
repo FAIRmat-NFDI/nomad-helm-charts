@@ -62,7 +62,6 @@ nomad:
       db_name: nomad_oasis
       port: 27017
       # User for an external MongoDB; the password comes from
-      # nomad.secrets.mongo. The bundled MongoDB with auth uses "root".
       username: ""
 
     elastic:
