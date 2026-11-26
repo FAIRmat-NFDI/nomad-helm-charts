@@ -141,7 +141,7 @@ helm upgrade --install traefik traefik/traefik \
   --set providers.kubernetesIngressNGINX.enabled=true \
   --set ports.web.transport.respondingTimeouts.readTimeout=0 \
   --set ports.websecure.transport.respondingTimeouts.readTimeout=0 \
-  --set service.type=LoadBalancer \
+  --set service.spec.type=LoadBalancer \
   --wait --timeout 5m
 
 echo ""
