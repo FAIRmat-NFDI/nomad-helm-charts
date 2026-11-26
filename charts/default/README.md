@@ -1092,13 +1092,20 @@ nomad:
   config:
     north:
       enabled: true
-      hub_service_api_token: "your-secure-token"  # Used for NOMAD-JupyterHub communication
       hub_host: nomad-oasis-jupyterhub-hub        # JupyterHub hub service name
       hub_port: 8081                               # JupyterHub hub service port
       tools:
         options:
           jupyter:
             image: ghcr.io/fairmat-nfdi/nomad-distro-template/jupyter:main
+
+  secrets:
+    north:
+      hubServiceApiToken:
+        # Shared by NOMAD and the hub; the hub reads the same Secret through
+        # jupyterhub.hub.extraEnv.NOMAD_NORTH_HUB_SERVICE_API_TOKEN (default:
+        # nomad-hub-service-api-token, key token).
+        existingSecret: nomad-hub-service-api-token
 
 jupyterhub:
   enabled: true
@@ -1120,9 +1127,11 @@ kubectl create secret generic nomad-hub-service-api-token \
   --from-literal=token=$(openssl rand -hex 32)
 ```
 
+The chart fails to render if NOMAD and the hub would read the token from different Secrets or keys, and names the `--set` flags that align them.
+
 When enabled, the chart will:
 1. Deploy the JupyterHub subchart
-2. Configure nginx proxy to route `/api_base_path/north/` to JupyterHub
+2. Configure nginx proxy to route `/api_base_path/north/` to JupyterHub (only when `jupyterhub.enabled`; with NORTH pointed at a hub outside this release, route it yourself)
 3. Configure OAuth authentication via Keycloak
 
 ### Custom Tools

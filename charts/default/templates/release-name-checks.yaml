@@ -22,7 +22,17 @@ they point at Services that do not exist and fail only at runtime.
 
 {{- if .Values.jupyterhub.enabled }}
 {{- $apiUrl := printf "http://%s-app:8000%s/api/v1" $fullName (include "nomad.proxy.backendPrefix" .) -}}
-{{- $checks = append $checks (list "jupyterhub.hub.extraEnv.NOMAD_API_URL" (dig "hub" "extraEnv" "NOMAD_API_URL" "" .Values.jupyterhub) "http://nomad-oasis-app:8000/backend/api/v1" $apiUrl) -}}
+{{- /* z2jh accepts extraEnv as a map or as a list of {name, value} */ -}}
+{{- $hubEnv := dig "hub" "extraEnv" (dict) .Values.jupyterhub -}}
+{{- $hubApiUrl := "" -}}
+{{- if kindIs "map" $hubEnv }}
+{{- $hubApiUrl = get $hubEnv "NOMAD_API_URL" -}}
+{{- else }}
+{{- range $hubEnv }}
+{{- if eq (toString (get . "name")) "NOMAD_API_URL" }}{{- $hubApiUrl = get . "value" -}}{{- end }}
+{{- end }}
+{{- end }}
+{{- $checks = append $checks (list "jupyterhub.hub.extraEnv.NOMAD_API_URL" $hubApiUrl "http://nomad-oasis-app:8000/backend/api/v1" $apiUrl) -}}
 {{- end }}
 
 {{- $wrong := list -}}

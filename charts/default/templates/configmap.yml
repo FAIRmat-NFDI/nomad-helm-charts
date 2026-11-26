@@ -112,7 +112,6 @@ data:
     "enable_new_hub_api" $config.north.enable_new_hub_api
     "hub_host" (default $config.services.api_host $config.north.hub_host)
     "hub_port" (default $config.services.api_port $config.north.hub_port)
-    "hub_service_api_token" $config.north.hub_service_api_token
 }}
 {{- if $config.north.tools }}
 {{- $_ := set $north "tools" $config.north.tools }}

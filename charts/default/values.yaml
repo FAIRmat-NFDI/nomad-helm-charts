@@ -191,7 +191,7 @@ nomad:
       enabled: false
       # Use the NORTH API of the refactored hub (hub.image)
       enable_new_hub_api: true
-      hub_service_api_token: secret-token
+      hub_service_api_token: ""
       tools: {}
 
     dashboards:
@@ -357,7 +357,10 @@ nomad:
       key: "password"
       value: ""
 
-    # JupyterHub service API token
+    # JupyterHub service API token, shared by NOMAD and the hub. The hub reads
+    # it via jupyterhub.hub.extraEnv.NOMAD_NORTH_HUB_SERVICE_API_TOKEN, which
+    # must reference the same Secret and key (checked when rendering). Without
+    # existingSecret, the chart creates <fullname>-north-hub-token-secret.
     north:
       hubServiceApiToken:
         existingSecret: ""
@@ -772,6 +775,7 @@ jupyterhub:
     extraEnv:
       # NOMAD API that the spawner gets the tools and mounts from
       NOMAD_API_URL: http://nomad-oasis-app:8000/backend/api/v1
+      # Must be the Secret and key in nomad.secrets.north.hubServiceApiToken
       NOMAD_NORTH_HUB_SERVICE_API_TOKEN:
         valueFrom:
           secretKeyRef:
